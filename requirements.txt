@@ -1,0 +1,27 @@
+# ---------------------------------------------------------------------------
+# Runtime dependencies (what ships inside the Cloud Run container).
+# Pinned to minor versions to keep image builds reproducible.
+# Deliberately NOT here: torch / sentence-transformers / full mlflow.
+# See README "Why these dependencies" for the image-size rationale.
+# ---------------------------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-multipart==0.0.20
+
+# LLM + embeddings (hosted API, no local model weights)
+openai==1.59.6
+tiktoken==0.8.0
+
+# Vector store (embedded, no server, no managed DB bill)
+chromadb==0.6.3
+
+# Experiment tracking. mlflow-skinny is the client-only distribution; the two
+# extras below are what the SQLAlchemy (SQLite) tracking backend needs.
+mlflow-skinny==2.19.0
+SQLAlchemy==2.0.36
+alembic==1.14.0
+
+# GCS artifact store for MLflow
+google-cloud-storage==2.19.0

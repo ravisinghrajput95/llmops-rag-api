@@ -1,0 +1,32 @@
+# Secrets -- never commit. .env.example is the template that IS committed.
+.env
+*.key
+*.pem
+service-account*.json
+gha-key*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local state
+data/
+mlruns/
+mlflow.db
+*.sqlite3
+chroma/
+
+# Terraform -- state can contain sensitive values
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+.DS_Store

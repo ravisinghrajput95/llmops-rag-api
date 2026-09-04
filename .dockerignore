@@ -1,0 +1,27 @@
+# Keep the build context tiny: everything here would otherwise be uploaded to
+# Cloud Build / Docker on every image build.
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Never bake local state or secrets into an image.
+.env
+data/
+mlruns/
+*.db
+*.sqlite3
+
+.git/
+.github/
+terraform/
+scripts/
+tests/
+docs/
+*.md
+!README.md
+.DS_Store
