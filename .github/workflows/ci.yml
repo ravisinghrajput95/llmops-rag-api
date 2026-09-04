@@ -1,0 +1,41 @@
+name: CI
+
+# Fast feedback on every branch and PR. No GCP credentials, no cloud
+# resources, no spend -- this runs entirely on GitHub's free runners.
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Must match the Dockerfile base image.
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+
+      - name: Run tests
+        # OpenAI is mocked in conftest.py, so this never makes a paid call.
+        run: pytest -v

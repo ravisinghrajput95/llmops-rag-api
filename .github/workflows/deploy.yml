@@ -1,0 +1,161 @@
+name: Deploy to Cloud Run
+
+# Test -> build -> push to Artifact Registry -> deploy to Cloud Run.
+#
+# Authentication uses Workload Identity Federation: GitHub mints a short-lived
+# OIDC token that Google exchanges for a credential valid for a few minutes.
+# There is no long-lived JSON service account key stored in GitHub.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false # never interrupt a half-finished deploy
+
+env:
+  REGISTRY: ${{ secrets.GCP_REGION }}-docker.pkg.dev
+  IMAGE_NAME: ${{ secrets.GCP_SERVICE_NAME }}
+
+jobs:
+  test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+
+      - name: Run tests
+        run: pytest -v
+
+  deploy:
+    name: Build and deploy
+    needs: test # a red test suite must never reach production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      id-token: write # required to mint the OIDC token for WIF
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Tag with the commit SHA so every deploy is traceable to a commit
+          # and a rollback is a one-line gcloud command.
+          tags: |
+            ${{ env.REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.IMAGE_NAME }}/api:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.IMAGE_NAME }}/api:latest
+          # GitHub Actions cache keeps rebuilds fast and is free.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        # Only the image and the cost guardrails are set here. Env vars and
+        # secrets are owned by Terraform; passing --set-env-vars would wipe
+        # them, so the two systems stay in their own lanes.
+        run: |
+          gcloud run deploy "${{ secrets.GCP_SERVICE_NAME }}" \
+            --image "${{ env.REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.IMAGE_NAME }}/api:${{ github.sha }}" \
+            --region "${{ secrets.GCP_REGION }}" \
+            --platform managed \
+            --min-instances 0 \
+            --max-instances 2 \
+            --cpu 1 \
+            --memory 512Mi \
+            --timeout 60s \
+            --concurrency 80 \
+            --quiet
+
+          URL=$(gcloud run services describe "${{ secrets.GCP_SERVICE_NAME }}" \
+            --region "${{ secrets.GCP_REGION }}" --format='value(status.url)')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test the deployment
+        # /health needs no auth and makes no LLM call, so this verifies the
+        # revision is live without spending anything.
+        run: |
+          set -euo pipefail
+          URL="${{ steps.deploy.outputs.url }}"
+          for attempt in {1..10}; do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' "$URL/health" || true)
+            if [ "$code" = "200" ]; then
+              echo "Healthy: $(cat /tmp/health.json)"
+              exit 0
+            fi
+            echo "Attempt $attempt: HTTP $code, retrying (cold start)..."
+            sleep 6
+          done
+          echo "::error::Service did not become healthy at $URL/health"
+          exit 1
+
+      - name: Roll back on failed smoke test
+        if: failure() && steps.deploy.outcome == 'success'
+        # A broken revision that stays live would keep serving errors; send
+        # traffic back to the previous healthy revision immediately.
+        run: |
+          PREV=$(gcloud run revisions list \
+            --service "${{ secrets.GCP_SERVICE_NAME }}" \
+            --region "${{ secrets.GCP_REGION }}" \
+            --format='value(metadata.name)' --sort-by='~metadata.creationTimestamp' \
+            | sed -n '2p')
+          if [ -n "$PREV" ]; then
+            echo "Rolling back to $PREV"
+            gcloud run services update-traffic "${{ secrets.GCP_SERVICE_NAME }}" \
+              --region "${{ secrets.GCP_REGION }}" --to-revisions "$PREV=100" --quiet
+          fi
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          {
+            echo "### Deployed :rocket:"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| URL | ${{ steps.deploy.outputs.url }} |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+            echo "| Region | ${{ secrets.GCP_REGION }} |"
+            echo "| Min instances | 0 (no idle billing) |"
+            echo "| Max instances | 2 (cost ceiling) |"
+          } >> "$GITHUB_STEP_SUMMARY"
