@@ -103,18 +103,38 @@ fi
 
 # --- Artifact Registry -----------------------------------------------------
 head_ "Artifact Registry (Always Free up to 0.5 GB)"
-REPOS=$(gcloud artifacts repositories list --project="$PROJECT_ID" \
-        --format='value(name,sizeBytes)' 2>/dev/null || true)
-if [ -z "$REPOS" ]; then
+# Parse JSON, not value(): the value() formatter humanises sizeBytes into
+# fractional MB ("162.809"), which is not integer arithmetic bash can do.
+REPO_JSON=$(gcloud artifacts repositories list --project="$PROJECT_ID" \
+            --format=json 2>/dev/null || echo '[]')
+REPO_LINES=$(printf '%s' "$REPO_JSON" | python3 -c "
+import json, sys
+try:
+    repos = json.load(sys.stdin)
+except Exception:
+    repos = []
+for r in repos:
+    size = int(r.get('sizeBytes') or 0)
+    print(f\"{r['name'].rsplit('/', 1)[-1]} {size}\")
+" 2>/dev/null || true)
+
+if [ -z "$REPO_LINES" ]; then
   ok "No repositories."
 else
-  echo "$REPOS" | while read -r name size; do
-    if [ -n "${size:-}" ] && [ "$size" -gt 536870912 ] 2>/dev/null; then
-      bad "$(basename "$name"): $((size / 1048576)) MiB -- over the free 0.5 GB"
+  FREE_BYTES=536870912 # 0.5 GB
+  while read -r name size; do
+    [ -z "$name" ] && continue
+    MIB=$((size / 1048576))
+    PCT=$((size * 100 / FREE_BYTES))
+    if [ "$size" -gt "$FREE_BYTES" ]; then
+      bad "${name}: ${MIB} MiB -- over the free 0.5 GB"
+      FINDINGS=$((FINDINGS + 1))
+    elif [ "$PCT" -gt 70 ]; then
+      warn "${name}: ${MIB} MiB (${PCT}% of the free 0.5 GB)"
     else
-      ok "$(basename "$name"): $(( ${size:-0} / 1048576 )) MiB"
+      ok "${name}: ${MIB} MiB (${PCT}% of the free 0.5 GB)"
     fi
-  done
+  done <<< "$REPO_LINES"
 fi
 
 # --- Budget ----------------------------------------------------------------
