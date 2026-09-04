@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is gitignored.
+project_id  = "my-gcp-project-id"
+github_repo = "my-github-username/llmops-rag-api"
+
+# Do NOT put the OpenAI key here. Pass it through the environment instead:
+#   export TF_VAR_openai_api_key="sk-..."
+#   export TF_VAR_app_api_key="$(openssl rand -hex 24)"
+
+region        = "us-central1" # must be us-central1 / us-east1 / us-west1
+max_instances = 2
+min_instances = 0
+
+# Budget alert (strongly recommended). Find the id with:
+#   gcloud billing accounts list
+billing_account_id = ""
+budget_amount_inr  = 200
+budget_alert_email = "you@example.com"
