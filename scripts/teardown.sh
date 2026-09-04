@@ -33,7 +33,7 @@ cat <<PLAN
     - GCS bucket               gs://${BUCKET} and every object in it
     - Secrets                  ${SERVICE}-openai-api-key, ${SERVICE}-app-api-key
     - Service accounts         ${SERVICE}-run, ${SERVICE}-deployer
-    - Workload identity pool   github-pool
+    - Workload identity pool   ${WIF_POOL:-llmops-github-pool}
 
   Kept (free, and annoying to recreate):
     - Enabled APIs
@@ -87,12 +87,12 @@ for secret in "${SERVICE}-openai-api-key" "${SERVICE}-app-api-key"; do
 done
 
 say "Workload identity federation"
-if gcloud iam workload-identity-pools describe github-pool --location=global >/dev/null 2>&1; then
+if gcloud iam workload-identity-pools describe ${WIF_POOL:-llmops-github-pool} --location=global >/dev/null 2>&1; then
   # Pools are soft-deleted and the id stays reserved for 30 days.
-  gcloud iam workload-identity-pools delete github-pool --location=global --quiet
-  gone "workload identity pool github-pool"
+  gcloud iam workload-identity-pools delete ${WIF_POOL:-llmops-github-pool} --location=global --quiet
+  gone "workload identity pool ${WIF_POOL:-llmops-github-pool}"
 else
-  skip "workload identity pool github-pool"
+  skip "workload identity pool ${WIF_POOL:-llmops-github-pool}"
 fi
 
 say "Service accounts"

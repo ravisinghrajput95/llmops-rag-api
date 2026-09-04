@@ -9,7 +9,7 @@
 
 resource "google_iam_workload_identity_pool" "github" {
   project                   = var.project_id
-  workload_identity_pool_id = "github-pool"
+  workload_identity_pool_id = var.wif_pool_id
   display_name              = "GitHub Actions"
   description               = "OIDC federation for GitHub Actions deploys"
 
@@ -19,7 +19,7 @@ resource "google_iam_workload_identity_pool" "github" {
 resource "google_iam_workload_identity_pool_provider" "github" {
   project                            = var.project_id
   workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
-  workload_identity_pool_provider_id = "github-provider"
+  workload_identity_pool_provider_id = var.wif_provider_id
   display_name                       = "GitHub OIDC"
 
   attribute_mapping = {

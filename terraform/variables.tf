@@ -149,3 +149,20 @@ variable "budget_alert_email" {
   type        = string
   default     = ""
 }
+
+variable "wif_pool_id" {
+  description = <<-EOT
+    Workload identity pool id. Pool ids must be unique per project and cannot
+    be reused for 30 days after deletion, so this is a variable rather than a
+    hardcoded "github-pool": that name is commonly already taken in a project
+    that has followed any GitHub-to-GCP tutorial before.
+  EOT
+  type        = string
+  default     = "llmops-github-pool"
+}
+
+variable "wif_provider_id" {
+  description = "Workload identity provider id, unique within the pool."
+  type        = string
+  default     = "github-provider"
+}
