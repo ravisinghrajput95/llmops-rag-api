@@ -124,3 +124,43 @@ def test_openai_failure_returns_502_not_500(ingested_client, chat_client):
     body = response.json()
     assert body["error_type"] == "APIConnectionError"
     assert "Upstream LLM provider" in body["detail"]
+
+
+def test_similarity_floor_prevents_paying_for_irrelevant_context(tmp_path):
+    """The cost control that matters in production.
+
+    A non-empty collection always returns *something* from a vector search, so
+    the empty-collection check alone is not enough: an unrelated question still
+    retrieves a junk chunk and pays for a completion. The similarity floor is
+    what actually prevents that spend. Verified against the live service, where
+    an unrelated question scored 0.10 while a relevant one scored 0.62.
+    """
+    from app.config import Settings
+    from app.rag.pipeline import RAGPipeline
+    from app.rag.vectorstore import ChromaVectorStore
+    from app.tracking.mlflow_tracker import MLflowTracker
+    from tests.conftest import FakeChatClient, FakeEmbeddingClient
+
+    settings = Settings(
+        openai_api_key="test-key-not-real",
+        chroma_dir=str(tmp_path / "floor"),
+        chroma_collection="floor-test",
+        mlflow_enabled=False,
+        min_similarity=0.9,  # only near-identical text may reach the model
+    )
+    chat = FakeChatClient()
+    pipeline = RAGPipeline(
+        settings=settings,
+        store=ChromaVectorStore(settings.chroma_dir, settings.chroma_collection),
+        embedding_client=FakeEmbeddingClient(),
+        chat_client=chat,
+        tracker=MLflowTracker(settings),
+    )
+    pipeline.ingest([("Cloud Run scales to zero when idle.", "gcp", {})])
+
+    result = pipeline.query("zebra giraffe rhinoceros safari wildlife")
+
+    assert "I don't know" in result.answer
+    assert result.sources == []
+    assert result.completion_tokens == 0
+    assert chat.calls == [], "the paid completion call must not happen"

@@ -101,9 +101,15 @@ The API returns this on every call, so it is observable rather than theoretical:
 
 ### Cost controls built into the code
 
-- **Empty-retrieval short-circuit** — if nothing matches the question, `/query`
-  returns "I don't know" *without calling the LLM at all*. No context means no
-  useful answer, so paying for tokens would be pure waste. Enforced by a test.
+- **Similarity floor + short-circuit** — a vector search over a non-empty
+  collection always returns *something*, so an unrelated question would still
+  retrieve a junk chunk and pay for a completion. `MIN_SIMILARITY` (default
+  `0.2`) drops chunks below the threshold; when nothing survives, `/query`
+  returns "I don't know" *without calling the LLM at all*. Measured on the live
+  service: a relevant chunk scored **0.62**, a loosely related one **0.15**, an
+  unrelated question **0.10**. The threshold is embedding-model specific —
+  recalibrate if you change models, and lower it if legitimate questions start
+  returning "I don't know". Enforced by a test.
 - **`max_instances = 2`** — a hard ceiling. If the public endpoint gets
   scraped, the blast radius is bounded.
 - **`--timeout 60s`** — a hung upstream call cannot bill for minutes.
@@ -159,7 +165,7 @@ git clone <your-repo-url> && cd llmops-rag-api
 make venv install          # Python 3.12 venv, matching the container
 cp .env.example .env       # then put your OPENAI_API_KEY in it
 
-make test                  # 67 tests, fully mocked — no network, no spend
+make test                  # 68 tests, fully mocked — no network, no spend
 make run                   # http://localhost:8080/docs
 ```
 
@@ -341,7 +347,7 @@ your card. If you have not upgraded, the failure mode is downtime, not a bill.
 │   └── tracking/
 │       ├── cost.py          # token → USD/INR, unit-tested
 │       └── mlflow_tracker.py# fail-open MLflow logging
-├── tests/                   # 67 tests, OpenAI fully mocked
+├── tests/                   # 68 tests, OpenAI fully mocked
 ├── terraform/               # AR, GCS, Cloud Run, IAM, WIF, budget
 ├── scripts/                 # bootstrap, wif, budget, cost_check, teardown, smoke
 ├── .github/workflows/       # ci.yml (all branches) + deploy.yml (main)

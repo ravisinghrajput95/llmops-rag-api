@@ -52,8 +52,15 @@ class Settings(BaseSettings):
     chunk_overlap: int = 120
     top_k: int = 4
     # Chunks scoring below this cosine similarity are dropped before they
-    # reach the prompt. Fewer junk chunks == fewer input tokens == less money.
-    min_similarity: float = 0.0
+    # reach the prompt. Fewer junk chunks == fewer input tokens == less money,
+    # and when everything is dropped the LLM call is skipped entirely.
+    #
+    # 0.2 is calibrated from measured text-embedding-3-small scores on this
+    # corpus: a genuinely relevant chunk scored 0.62, a loosely related one
+    # 0.15, and an unrelated question topped out at 0.10. Raise it to be
+    # stingier, lower it if legitimate questions start returning "I don't
+    # know". It is model-dependent -- recalibrate if you change embeddings.
+    min_similarity: float = 0.2
     max_ingest_chars: int = 200_000
 
     # --- MLflow -----------------------------------------------------------

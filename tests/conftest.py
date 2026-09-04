@@ -114,6 +114,10 @@ def settings(tmp_path: Path) -> Settings:
         chunk_size=400,
         chunk_overlap=60,
         top_k=3,
+        # Pinned off so retrieval tests are unaffected by the production
+        # similarity floor, which is calibrated for real OpenAI embeddings
+        # rather than this suite's hashed bag-of-words fake.
+        min_similarity=0.0,
         usd_to_inr=88.0,
     )
 
