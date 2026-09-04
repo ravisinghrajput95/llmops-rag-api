@@ -19,8 +19,11 @@ resource "google_billing_budget" "trial_guard" {
 
   budget_filter {
     projects = ["projects/${data.google_project.current.number}"]
-    # Only alert on real charges, not on credit-covered usage.
-    credit_types_treatment = "EXCLUDE_ALL_CREDITS"
+    # Track GROSS usage, including spend absorbed by trial credits. On a
+    # fixed pot of expiring credits this is the alert that matters: it fires
+    # while the drawdown is happening. EXCLUDE_ALL_CREDITS would instead stay
+    # at zero until the credits are exhausted and real charges begin.
+    credit_types_treatment = "INCLUDE_ALL_CREDITS"
   }
 
   amount {
