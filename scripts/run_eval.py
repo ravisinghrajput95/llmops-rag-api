@@ -54,8 +54,8 @@ def main() -> int:
     cases = load_golden_set(args.golden)
 
     print(f"Ingesting {args.corpus} ...")
-    chunks = ingest_corpus(pipeline, args.corpus)
-    print(f"  {chunks} chunks indexed")
+    ingested = ingest_corpus(pipeline, args.corpus)
+    print(f"  {ingested.chunk_count} chunks indexed")
     print(f"Running {len(cases)} cases against {settings.chat_model} ...")
 
     summary, breaches = run_evaluation(

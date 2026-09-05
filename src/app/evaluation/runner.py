@@ -48,9 +48,14 @@ class Thresholds:
         return breaches
 
 
-def ingest_corpus(pipeline, corpus_dir: str | Path) -> int:
+def ingest_corpus(pipeline, corpus_dir: str | Path):
     """Load the eval corpus. Doc ids are filenames, which is what lets a
-    golden case say `"expected_doc": "storage"` and mean storage.md."""
+    golden case say `"expected_doc": "storage"` and mean storage.md.
+
+    Returns the full IngestResult rather than a chunk count: embedding the
+    corpus is what a sweep actually spends money on, and reporting only the
+    chunk count made that cost invisible.
+    """
     documents = []
     for path in sorted(Path(corpus_dir).glob("*.md")):
         documents.append((path.read_text(), path.stem, {"source": path.name}))
@@ -61,7 +66,7 @@ def ingest_corpus(pipeline, corpus_dir: str | Path) -> int:
         "eval corpus ingested",
         extra={"documents": len(documents), "chunks": result.chunk_count},
     )
-    return result.chunk_count
+    return result
 
 
 def run_evaluation(

@@ -371,6 +371,45 @@ retrieval discriminates between two documents that both discuss cost.
 `tests/test_evaluation.py` enforces this property directly: a test fails if
 the corpus ever shrinks back toward the retrieval depth.
 
+### Parameter sweeps
+
+MLflow was recording every call but never comparing two configurations, which
+made `chunk_size=800, top_k=4` a guess with a changelog. `make sweep` grids
+over chunk size, overlap, retrieval depth and similarity floor, logs one run
+per configuration under `stage=sweep`, and ranks them.
+
+It is nearly free because it scores **retrieval only** — no generation. 24
+configurations cost **$0.0025**, roughly a third of a single full eval.
+
+```bash
+make sweep     # ~$0.002, ranks the grid
+make eval      # ~$0.007, confirms a winner end-to-end
+```
+
+**The sweep's first version was wrong, in an instructive way.** It ranked on
+document-level retrieval hit rate and picked `cs=400 ov=0 k=3 floor=0.4` —
+100% hit rate, 47% less context per query. Running the full eval on it gave
+**92.6% accuracy against the incumbent's 100%**, five false refusals. Both
+configurations scored an identical hit rate of 1.000, so the metric being
+optimised could not distinguish them at all.
+
+The cause: hit rate asks whether the right *document* appeared. A tighter floor
+filtered out the chunk holding each answer while the document stayed
+represented by some other chunk. The metric was blind to the thing that
+actually determines whether an answer is possible.
+
+So the sweep now leads on **`answerable_rate`** — did any retrieved chunk
+actually contain a fact the answer needs. It is keyword presence, still free,
+and unlike hit rate it predicts reality: the failed candidate scores 93.3%
+against its measured 92.6% accuracy, while the incumbent scores 98.3% against
+100%. `tests/test_sweep.py` pins that ranking order.
+
+The outcome of the sweep was that the existing defaults were already at the
+frontier. That is a legitimate result — the value was in learning it rather
+than assuming it, and in discovering that the similarity floor rejects only
+38% of out-of-corpus questions, so the LLM is doing most of the refusing that
+the floor was supposed to make unnecessary.
+
 ### What the CI gate can and cannot tell you
 
 The offline gate uses a hashed bag-of-words embedder, which has no semantic

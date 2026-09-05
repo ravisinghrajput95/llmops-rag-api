@@ -202,6 +202,33 @@ class RAGPipeline:
         )
         return outcome
 
+    # -- retrieval ---------------------------------------------------------
+    def retrieve(
+        self, question: str, top_k: int | None = None
+    ) -> tuple[list[RetrievedChunk], int, float]:
+        """Embed a question and fetch matching chunks. No LLM call.
+
+        Public because retrieval is worth measuring on its own: a parameter
+        sweep over chunk size, retrieval depth and similarity floor needs
+        thousands of retrievals and none of the generations, which is the
+        difference between a sweep costing a fraction of a cent and costing
+        real money.
+
+        Returns (hits, embedding_tokens, elapsed_ms).
+        """
+        started = time.perf_counter()
+        k = top_k or self._settings.top_k
+        embedded = self._embeddings.embed([question])
+        query_vector = embedded.vectors[0] if embedded.vectors else []
+        hits = (
+            self._store.search(
+                query_vector, top_k=k, min_similarity=self._settings.min_similarity
+            )
+            if query_vector
+            else []
+        )
+        return hits, embedded.tokens, (time.perf_counter() - started) * 1000
+
     # -- query -------------------------------------------------------------
     def query(self, question: str, top_k: int | None = None) -> QueryResult:
         started = time.perf_counter()
@@ -210,15 +237,7 @@ class RAGPipeline:
         self._spend.check()
 
         # 1. Embed the question and retrieve.
-        retrieval_started = time.perf_counter()
-        embedded = self._embeddings.embed([question])
-        query_vector = embedded.vectors[0] if embedded.vectors else []
-        hits = (
-            self._store.search(query_vector, top_k=k, min_similarity=settings.min_similarity)
-            if query_vector
-            else []
-        )
-        retrieval_ms = (time.perf_counter() - retrieval_started) * 1000
+        hits, embedding_tokens, retrieval_ms = self.retrieve(question, k)
 
         # 2. Short-circuit when nothing matched: skip the LLM call entirely.
         #    No context means no useful answer, so paying for tokens is waste.
@@ -227,11 +246,11 @@ class RAGPipeline:
                 answer=NO_CONTEXT_ANSWER,
                 sources=[],
                 model=settings.chat_model,
-                embedding_tokens=embedded.tokens,
+                embedding_tokens=embedding_tokens,
                 retrieval_ms=round(retrieval_ms, 2),
                 latency_ms=round((time.perf_counter() - started) * 1000, 2),
                 cost_usd=estimate_cost_usd(
-                    settings.embedding_model, prompt_tokens=embedded.tokens
+                    settings.embedding_model, prompt_tokens=embedding_tokens
                 ),
             )
             outcome.cost_inr = usd_to_inr(outcome.cost_usd, settings.usd_to_inr)
@@ -254,7 +273,9 @@ class RAGPipeline:
         chat_cost = estimate_cost_usd(
             completion.model, completion.prompt_tokens, completion.completion_tokens
         )
-        embed_cost = estimate_cost_usd(settings.embedding_model, prompt_tokens=embedded.tokens)
+        embed_cost = estimate_cost_usd(
+            settings.embedding_model, prompt_tokens=embedding_tokens
+        )
         total_cost = round(chat_cost + embed_cost, 8)
         self._spend.record(total_cost)
 
@@ -264,7 +285,7 @@ class RAGPipeline:
             model=completion.model,
             prompt_tokens=completion.prompt_tokens,
             completion_tokens=completion.completion_tokens,
-            embedding_tokens=embedded.tokens,
+            embedding_tokens=embedding_tokens,
             retrieval_ms=round(retrieval_ms, 2),
             generation_ms=round(generation_ms, 2),
             latency_ms=round((time.perf_counter() - started) * 1000, 2),

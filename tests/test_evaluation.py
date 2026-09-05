@@ -223,7 +223,7 @@ class TestRegressionGate:
     """
 
     def test_corpus_ingests(self, pipeline) -> None:
-        assert ingest_corpus(pipeline, CORPUS_DIR) > 0
+        assert ingest_corpus(pipeline, CORPUS_DIR).chunk_count > 0
 
     def test_corpus_is_larger_than_retrieval_depth(self, pipeline, settings) -> None:
         """The guard that keeps the retrieval metric meaningful.
@@ -233,7 +233,7 @@ class TestRegressionGate:
         what the original 5-chunk corpus did. Fail loudly if the corpus ever
         shrinks back to that.
         """
-        chunks = ingest_corpus(pipeline, CORPUS_DIR)
+        chunks = ingest_corpus(pipeline, CORPUS_DIR).chunk_count
         assert chunks >= settings.top_k * 5, (
             f"corpus is {chunks} chunks against top_k={settings.top_k}; "
             "retrieval hit rate stops discriminating when the corpus is not "

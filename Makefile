@@ -8,7 +8,7 @@ IMAGE       ?= llmops-rag-api
 REGION      ?= us-central1
 SERVICE     ?= llmops-rag-api
 
-.PHONY: help venv install test lint fmt run docker-build docker-run clean deploy destroy cost-check eval
+.PHONY: help venv install test lint fmt run docker-build docker-run clean deploy destroy cost-check eval sweep
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -26,6 +26,11 @@ eval: ## Run the RAG eval against real OpenAI (SPENDS ~$0.002)
 	# The free, offline version of this runs in `make test` as the CI gate.
 	# This one measures what the real model actually does.
 	$(PYTHON) scripts/run_eval.py
+
+sweep: ## Sweep retrieval parameters and compare in MLflow (~$0.002)
+	# Retrieval only -- no generation -- so a whole grid costs a fraction of
+	# a cent. Confirm any winner with `make eval` before adopting it.
+	$(PYTHON) scripts/run_sweep.py
 
 lint: ## Lint and check formatting
 	.venv/bin/ruff check src tests
