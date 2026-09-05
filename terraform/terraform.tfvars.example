@@ -15,3 +15,15 @@ min_instances = 0
 billing_account_id = ""
 budget_amount_inr  = 200
 budget_alert_email = "you@example.com"
+
+# --- Workload Identity pool id ---------------------------------------------
+# Pool ids are unique per project and CANNOT BE REUSED FOR 30 DAYS after
+# deletion -- and `terraform destroy` soft-deletes the pool rather than
+# removing it. So after any destroy/apply cycle, bump this suffix. Leaving it
+# unchanged makes the next apply fail partway through (the pool, its provider
+# and the impersonation binding fail; everything else is created), which looks
+# like a mysterious partial deploy.
+#
+# `gcloud iam workload-identity-pools list --location=global --show-deleted`
+# shows which ids are still burned and when each frees up.
+wif_pool_id = "llmops-gh-pool-v1"
