@@ -89,18 +89,6 @@ app = FastAPI(
 )
 
 
-@app.middleware("http")
-async def trace_middleware(request: Request, call_next):
-    """Bind Cloud Trace id so every log line in a request is correlated."""
-    token = trace_context.set(
-        parse_cloud_trace_header(request.headers.get("X-Cloud-Trace-Context"))
-    )
-    try:
-        return await call_next(request)
-    finally:
-        trace_context.reset(token)
-
-
 def _client_key(request: Request) -> str:
     """Identify the caller for throttling.
 
@@ -136,6 +124,22 @@ async def rate_limit_middleware(request: Request, call_next):
                 headers={"Retry-After": str(int(retry_after) + 1)},
             )
     return await call_next(request)
+
+
+# Registered LAST, which in Starlette means it runs FIRST (outermost). That
+# ordering matters: the rate limiter logs and returns 429 without calling the
+# route, so if it sat outside this, every throttled request would log with no
+# trace id -- losing correlation exactly when a client is being investigated.
+@app.middleware("http")
+async def trace_middleware(request: Request, call_next):
+    """Bind Cloud Trace id so every log line in a request is correlated."""
+    token = trace_context.set(
+        parse_cloud_trace_header(request.headers.get("X-Cloud-Trace-Context"))
+    )
+    try:
+        return await call_next(request)
+    finally:
+        trace_context.reset(token)
 
 
 @app.exception_handler(BudgetExceededError)

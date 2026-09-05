@@ -193,4 +193,10 @@ def _safe_extract(archive: tarfile.TarFile, target: Path) -> None:
         destination = (resolved_target / member.name).resolve()
         if not destination.is_relative_to(resolved_target):
             raise ValueError(f"refusing unsafe tar member: {member.name}")
-    archive.extractall(target)
+    # filter="data" is passed explicitly rather than left to the default: the
+    # default is changing to this in Python 3.14 and warns until then, and a
+    # security-relevant extraction should not quietly change behaviour under
+    # an interpreter upgrade. It refuses absolute paths, links escaping the
+    # destination and special files -- all belt-and-braces over the loop above,
+    # which a snapshot of our own Chroma directory never trips.
+    archive.extractall(target, filter="data")

@@ -94,3 +94,37 @@ def test_budget_error_message_is_informative() -> None:
     error = BudgetExceededError(spent_usd=0.5, budget_usd=0.25, resets_in_seconds=100)
     assert "0.2500" in str(error)
     assert "100s" in str(error)
+
+
+def test_rate_limiter_runs_inside_trace_context(client: TestClient, monkeypatch) -> None:
+    """The rate limiter must run INSIDE the trace middleware, not outside it.
+
+    Starlette runs the last-registered middleware first, so registering the
+    trace middleware after the limiter is what puts the limiter inside it. Get
+    that backwards and every throttled request logs with no trace id --
+    correlation disappears exactly when a client is being investigated, and
+    nothing else fails, so it would go unnoticed.
+    """
+    from app.logging_config import trace_context
+
+    seen: list[str | None] = []
+
+    class RecordingLimiter:
+        enabled = True
+
+        def allow(self, key: str):
+            seen.append(trace_context.get())
+            return False, 1.0
+
+    monkeypatch.setattr(main_module, "_rate_limiter", RecordingLimiter())
+
+    response = client.post(
+        "/query",
+        json={"question": "anything"},
+        headers={"X-Cloud-Trace-Context": "abcdef0123456789abcdef0123456789/1;o=1"},
+    )
+
+    assert response.status_code == 429
+    assert seen == [
+        "abcdef0123456789abcdef0123456789"
+    ], "the limiter ran outside the trace middleware; check registration order"
