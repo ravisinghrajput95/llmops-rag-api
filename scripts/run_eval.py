@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+"""Run the RAG evaluation against real OpenAI.
+
+    OPENAI_API_KEY=sk-... python scripts/run_eval.py
+
+This SPENDS MONEY -- roughly $0.002 for the default 15-case set on
+gpt-4o-mini. The CI gate in tests/test_evaluation.py runs the same harness
+against deterministic fakes for free; this exists to measure what the real
+model actually does. Exits non-zero when a threshold is breached, so it can
+gate a release if you want it to.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from app.config import get_settings  # noqa: E402
+from app.dependencies import build_pipeline  # noqa: E402
+from app.evaluation.runner import (  # noqa: E402
+    Thresholds,
+    format_report,
+    ingest_corpus,
+    load_golden_set,
+    run_evaluation,
+)
+from app.logging_config import configure_logging  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--golden", default="evals/golden.jsonl")
+    parser.add_argument("--corpus", default="evals/corpus")
+    parser.add_argument("--accuracy", type=float, default=0.80)
+    parser.add_argument("--retrieval", type=float, default=0.85)
+    parser.add_argument("--refusal", type=float, default=1.0)
+    parser.add_argument(
+        "--no-mlflow", action="store_true", help="skip logging the run to MLflow"
+    )
+    args = parser.parse_args()
+
+    settings = get_settings()
+    configure_logging(level="WARNING", service_name=settings.service_name)
+
+    if not settings.openai_api_key:
+        print("OPENAI_API_KEY is not set; this script needs a real key.", file=sys.stderr)
+        return 2
+
+    pipeline = build_pipeline(settings)
+    cases = load_golden_set(args.golden)
+
+    print(f"Ingesting {args.corpus} ...")
+    chunks = ingest_corpus(pipeline, args.corpus)
+    print(f"  {chunks} chunks indexed")
+    print(f"Running {len(cases)} cases against {settings.chat_model} ...")
+
+    summary, breaches = run_evaluation(
+        pipeline,
+        cases,
+        thresholds=Thresholds(
+            accuracy=args.accuracy,
+            retrieval_hit_rate=args.retrieval,
+            refusal_accuracy=args.refusal,
+        ),
+        log_to_mlflow=not args.no_mlflow,
+    )
+    print(format_report(summary, breaches))
+    return 1 if breaches else 0
+
+
+if __name__ == "__main__":
+    logging.captureWarnings(True)
+    raise SystemExit(main())

@@ -38,4 +38,8 @@ jobs:
 
       - name: Run tests
         # OpenAI is mocked in conftest.py, so this never makes a paid call.
+        # This includes the RAG quality gate in tests/test_evaluation.py,
+        # which runs the golden set through the real retrieval path using a
+        # deterministic fake embedder -- free, offline, and it fails the build
+        # if chunking or the similarity floor regresses retrieval.
         run: pytest -v

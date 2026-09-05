@@ -8,7 +8,7 @@ IMAGE       ?= llmops-rag-api
 REGION      ?= us-central1
 SERVICE     ?= llmops-rag-api
 
-.PHONY: help venv install test lint fmt run docker-build docker-run clean deploy destroy cost-check
+.PHONY: help venv install test lint fmt run docker-build docker-run clean deploy destroy cost-check eval
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -21,6 +21,11 @@ install: ## Install dev + runtime dependencies
 
 test: ## Run the test suite (no network, no spend)
 	$(PYTHON) -m pytest -v
+
+eval: ## Run the RAG eval against real OpenAI (SPENDS ~$0.002)
+	# The free, offline version of this runs in `make test` as the CI gate.
+	# This one measures what the real model actually does.
+	$(PYTHON) scripts/run_eval.py
 
 lint: ## Lint and check formatting
 	.venv/bin/ruff check src tests
