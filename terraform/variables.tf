@@ -166,3 +166,23 @@ variable "wif_provider_id" {
   type        = string
   default     = "github-provider"
 }
+
+# --- Runtime spend guards --------------------------------------------------
+variable "daily_budget_usd" {
+  description = <<-EOT
+    Hard ceiling on estimated OpenAI spend per rolling 24h, enforced inside
+    the container. This is the only bound on the OpenAI bill: `terraform
+    destroy` removes every GCP resource and stops none of it. 0 disables.
+
+    Held per-process, so the effective ceiling is this value times the
+    running instance count.
+  EOT
+  type        = number
+  default     = 0.25
+}
+
+variable "rate_limit_per_minute" {
+  description = "Per-client request ceiling on /ingest and /query. 0 disables."
+  type        = number
+  default     = 30
+}

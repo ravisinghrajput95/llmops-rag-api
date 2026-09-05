@@ -257,6 +257,26 @@ resource "google_cloud_run_v2_service" "api" {
         value = "llmops-rag-demo"
       }
 
+      # Durability. /tmp does not survive scale-to-zero, so the Chroma
+      # directory is snapshotted into the same Always-Free bucket that holds
+      # MLflow artifacts and restored on cold start.
+      env {
+        name  = "GCS_BUCKET"
+        value = google_storage_bucket.mlflow_artifacts.name
+      }
+
+      # Spend and abuse ceilings. GCP teardown does not stop the OpenAI bill,
+      # and this service is publicly invokable, so these bound the one cost
+      # that Terraform destroy cannot.
+      env {
+        name  = "DAILY_BUDGET_USD"
+        value = tostring(var.daily_budget_usd)
+      }
+      env {
+        name  = "RATE_LIMIT_PER_MINUTE"
+        value = tostring(var.rate_limit_per_minute)
+      }
+
       env {
         name = "OPENAI_API_KEY"
         value_source {

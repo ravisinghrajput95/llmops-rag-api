@@ -265,29 +265,117 @@ frictionless. `/health` deliberately stays open so uptime probes work.
 
 ---
 
-## Known limitation: Chroma is ephemeral on Cloud Run
-
-Worth stating plainly rather than discovering in production.
+## Durability: how state survives scale-to-zero
 
 Cloud Run's filesystem is read-only except `/tmp`, which is an **in-memory
-tmpfs, private to one instance**. So:
+tmpfs private to one instance**. Left alone, that means documents ingested by
+one instance are invisible to another and everything vanishes a few idle
+minutes later.
 
-- Documents ingested by one instance are invisible to another.
-- Everything is lost when the service scales to zero (a few minutes idle).
-- `/tmp` usage counts against the 512Mi memory limit.
+So the Chroma directory is snapshotted to Cloud Storage after any ingest that
+changed something, and restored when a new instance starts. The restore runs
+before Chroma opens the directory, because `PersistentClient` reads its SQLite
+file and HNSW index at construction.
 
-This is fine for a demo: ingest, then query, on a warm instance. It is not
-durable storage. The fix costs money, which is why it is not here:
+```
+POST /ingest ──► embed ──► Chroma (/tmp) ──► tar.gz ──► gs://<bucket>/snapshots/
+cold start   ──► restore from GCS ──► Chroma opens ──► ready
+POST /query  ──► Chroma (/tmp)                    # never touches GCS
+```
 
-| Option | Cost |
+Set `GCS_BUCKET` to enable it; leave it empty locally, where the filesystem is
+already durable. Terraform wires it to the same Always-Free bucket that holds
+MLflow artifacts, so durability costs **nothing**.
+
+What this deliberately does not solve:
+
+| Limitation | Why it is acceptable here |
 |---|---|
-| Cloud SQL + pgvector | ~₹700+/month — **2.6× the remaining budget** |
-| Snapshot Chroma to GCS on write, restore on cold start | Free-ish, adds cold-start latency and needs write coordination |
-| Managed vector DB | No meaningful free tier |
+| Last write wins under concurrent ingest | Needs GCS generation preconditions and a retry loop. Ingest is rare and `max-instances` is 2. The restored generation is logged, so a lost write is diagnosable. |
+| Whole-directory snapshots | Chroma's SQLite file and HNSW index must move together or the collection is corrupt. |
+| MLflow's SQLite run history is still ephemeral | Artifacts persist (they go to GCS). For durable run history, point `MLFLOW_TRACKING_URI` at a real backend. |
 
-The same applies to the MLflow SQLite database at `/tmp/mlflow.db`. MLflow
-**artifacts** do persist, because they go to GCS. For durable run history,
-point `MLFLOW_TRACKING_URI` at a persistent backend.
+A GCS outage degrades this to the old ephemeral behaviour rather than taking
+the service down: snapshot failures are logged and swallowed.
+
+The alternative was Cloud SQL with pgvector at ~₹700/month — **2.6x the entire
+remaining budget** this project was built against.
+
+---
+
+## Evaluation
+
+Cost and latency were always measured; answer quality was not. A 15-case
+golden set (`evals/golden.jsonl`) over a small corpus (`evals/corpus/`) now
+scores:
+
+| Metric | What it catches |
+|---|---|
+| `retrieval_hit_rate` | The expected document was retrieved. Chunking and similarity-floor regressions show up here first. |
+| `keyword_hit` | The answer contains a fact the corpus supports. |
+| `refusal_accuracy` | Out-of-corpus questions get "I don't know". **Floor is 100%** — a confident hallucination is worse than no answer. |
+| `citation_rate` | Answers cite passages as `[n]`, as the prompt requires. |
+
+Three cases are adversarial out-of-corpus questions, including one plausibly
+adjacent topic (AWS Lambda) that the corpus does not cover.
+
+**There is no LLM judge.** A judge would cost money per run, make the CI gate
+non-deterministic, and inherit the blind spots of the model family it grades.
+Keyword scoring is cheap and repeatable — and it cannot catch a fluent answer
+that is subtly wrong, which makes this a regression gate, not a correctness
+proof.
+
+The harness takes a pipeline rather than building one, so the same code serves
+two callers:
+
+```bash
+make test    # free, offline. Runs the golden set through the real retrieval
+             # path with a deterministic fake embedder, and fails the build if
+             # retrieval regresses. Runs on every push.
+
+make eval    # SPENDS ~$0.002. Runs against real OpenAI to measure generation
+             # quality, then exits non-zero if a threshold is breached.
+```
+
+Both log to the same MLflow experiment as production traffic, so eval quality
+and live quality are directly comparable.
+
+One thing CI cannot check: refusal accuracy. The fake embedder is a hashed
+bag-of-words that scores "weather in Mumbai" at 0.57 against unrelated text on
+common-word overlap alone, so asserting refusal there would measure the fake
+rather than the system. `make eval` measures it where the similarity floor and
+the refusal instruction actually apply.
+
+---
+
+## Spend and abuse ceilings
+
+`terraform destroy` removes every GCP resource and stops **none** of the
+OpenAI bill. The service is publicly invokable and holds a real API key, so
+two ceilings bound it:
+
+- **`DAILY_BUDGET_USD`** (default `0.25`) — checked *before* any embedding or
+  completion call, so the ceiling can be overshot by at most one request.
+  ~1,200 gpt-4o-mini queries fit inside it. Exhaustion returns **429** with
+  `Retry-After`, not 500: the service is healthy, the caller may simply not
+  spend more today.
+- **`RATE_LIMIT_PER_MINUTE`** (default `30`) — per client, keyed on a hash of
+  the API key rather than an IP, because behind Cloud Run every request
+  arrives from Google's front end and `X-Forwarded-For` is caller-controlled.
+
+Both hold state **in process**, so with `max-instances=2` the effective limits
+are up to 2x the configured values and reset on scale-to-zero. A shared
+counter needs Redis or Firestore; neither is free at this budget. An
+approximate cap that fails closed beats a perfect one that costs money to run.
+
+`/health` and `/ready` are never throttled — a 429 on `/health` would make
+Cloud Run consider the revision unhealthy. `GET /ready` reports remaining
+budget:
+
+```json
+{"spend": {"spent_usd": 0.0021, "remaining_usd": 0.2479, "calls": 12},
+ "persistence": {"enabled": true, "uri": "gs://.../snapshots/chroma.tar.gz"}}
+```
 
 ---
 
@@ -307,6 +395,7 @@ PROJECT_ID=my-project ./scripts/cost_check.sh
 - [ ] **Cloud Run `max-instances` is set** — bounds a traffic spike
 - [ ] **Artifact Registry under 0.5 GB** — cleanup policy attached
 - [ ] **GCS bucket under 5 GB and in a US region** — lifecycle rule attached
+      (now also holds the Chroma snapshot; still a few MB at demo scale)
 - [ ] **Check remaining credits** — [console.cloud.google.com/billing](https://console.cloud.google.com/billing) → Credits
 - [ ] **Decide: keep or kill.** Everything here is Always Free at demo scale, so
       the service can keep running past expiry. If you would rather be certain:
@@ -315,6 +404,9 @@ PROJECT_ID=my-project ./scripts/cost_check.sh
 PROJECT_ID=my-project ./scripts/teardown.sh     # deletes every billable resource
 ```
 
+- [ ] **Confirm the in-app spend ceiling is set** — `curl $URL/ready | jq .spend`
+      should show `enabled: true`. This is the only bound on the OpenAI bill
+      while the service is up; `terraform destroy` does not touch it.
 - [ ] **Revoke the OpenAI key** at [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
       — billed by OpenAI, unaffected by GCP teardown
 - [ ] **Disable billing on the project** for a guaranteed zero bill:
@@ -339,15 +431,23 @@ your card. If you have not upgraded, the failure mode is downtime, not a bill.
 │   ├── dependencies.py      # DI wiring + optional API-key guard
 │   ├── logging_config.py    # Cloud Logging JSON formatter
 │   ├── schemas.py           # request/response contracts
+│   ├── persistence.py       # Chroma ⇄ GCS snapshots (survives scale-to-zero)
+│   ├── rate_limit.py        # per-client token bucket
 │   ├── llm/openai_client.py # chat + embedding wrappers (Protocol-based)
 │   ├── rag/
 │   │   ├── chunking.py      # paragraph-aware splitter
 │   │   ├── vectorstore.py   # Chroma, cosine similarity
 │   │   └── pipeline.py      # ingest + query orchestration, instrumented
+│   ├── evaluation/
+│   │   ├── dataset.py       # golden-set JSONL loader
+│   │   ├── metrics.py       # retrieval/refusal/citation scoring
+│   │   └── runner.py        # eval run + MLflow logging + thresholds
 │   └── tracking/
 │       ├── cost.py          # token → USD/INR, unit-tested
+│       ├── spend_guard.py   # daily OpenAI spend ceiling
 │       └── mlflow_tracker.py# fail-open MLflow logging
-├── tests/                   # 68 tests, OpenAI fully mocked
+├── evals/                   # golden.jsonl + corpus/ for the quality gate
+├── tests/                   # 121 tests, OpenAI fully mocked
 ├── terraform/               # AR, GCS, Cloud Run, IAM, WIF, budget
 ├── scripts/                 # bootstrap, wif, budget, cost_check, teardown, smoke
 ├── .github/workflows/       # ci.yml (all branches) + deploy.yml (main)
