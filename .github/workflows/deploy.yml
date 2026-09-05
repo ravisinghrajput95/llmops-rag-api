@@ -68,6 +68,44 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+      # Terraform owns the infrastructure and can legitimately be torn down --
+      # this project is built to be destroyed between demos to protect a small
+      # credit balance. Without this check the build runs for minutes and then
+      # fails deep inside a docker push with a 404 that reads like a broken
+      # workflow rather than "there is nothing to deploy to".
+      - name: Check the target infrastructure exists
+        run: |
+          missing=0
+          if ! gcloud artifacts repositories describe "${{ secrets.GCP_SERVICE_NAME }}" \
+               --location "${{ secrets.GCP_REGION }}" >/dev/null 2>&1; then
+            echo "::error::Artifact Registry repo '${{ secrets.GCP_SERVICE_NAME }}' not found in ${{ secrets.GCP_REGION }}."
+            missing=1
+          fi
+          if ! gcloud run services describe "${{ secrets.GCP_SERVICE_NAME }}" \
+               --region "${{ secrets.GCP_REGION }}" >/dev/null 2>&1; then
+            echo "::error::Cloud Run service '${{ secrets.GCP_SERVICE_NAME }}' not found in ${{ secrets.GCP_REGION }}."
+            missing=1
+          fi
+          if [ "$missing" = "1" ]; then
+            {
+              echo "### Nothing to deploy to"
+              echo
+              echo "The infrastructure this workflow targets does not exist, so the"
+              echo "build was skipped rather than run for several minutes first."
+              echo
+              echo "If this was a deliberate teardown, that is expected. To bring it back:"
+              echo
+              echo '```bash'
+              echo "cd terraform && terraform apply"
+              echo '```'
+              echo
+              echo "Then refresh the GitHub secrets from the new outputs -- in particular"
+              echo "GCP_WORKLOAD_IDENTITY_PROVIDER, which changes whenever wif_pool_id does."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Artifact Registry and Cloud Run both present; proceeding."
+
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
 
