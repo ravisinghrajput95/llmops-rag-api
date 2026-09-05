@@ -82,9 +82,30 @@ embed      20 tokens × $0.02/1M  = $0.0000004
                           total  ≈ $0.00033  ≈  ₹0.029
 ```
 
-**≈ 34 queries per rupee.** Your ₹266, if it were spendable on OpenAI (it is
-not — it is GCP credit), would be ~9,000 queries. In practice GCP spend stays
-at zero and OpenAI is billed separately at this rate.
+**≈ 34 queries per rupee** at those token counts. That worked example assumes
+a fairly full 1,200-token context; the numbers actually measured on this
+corpus are lower, because a small corpus retrieves a smaller prompt.
+
+### Measured, not modelled
+
+From a real `make eval` run against `gpt-4o-mini` (15 questions, 5 chunks
+indexed) on 2026-09-05:
+
+| | Measured |
+|---|---|
+| Cost, 15 queries | **$0.001310** |
+| Cost per query | **$0.0000873** ≈ ₹0.0077 |
+| Queries per rupee | **≈ 130** |
+| Mean latency | 1,402 ms |
+| p95 latency | 1,610 ms |
+
+So the modelled `$0.00033` is conservative by ~3.8x against this corpus —
+which is the right direction for an estimate to be wrong in, and worth knowing
+before trusting the table above on a larger corpus.
+
+Your ₹266, if it were spendable on OpenAI (it is not — it is GCP credit),
+would be tens of thousands of queries at this rate. In practice GCP spend
+stays at zero and OpenAI is billed separately.
 
 The API returns this on every call, so it is observable rather than theoretical:
 
@@ -318,6 +339,21 @@ scores:
 
 Three cases are adversarial out-of-corpus questions, including one plausibly
 adjacent topic (AWS Lambda) that the corpus does not cover.
+
+**Latest run** (`make eval`, `gpt-4o-mini`, 2026-09-05):
+
+| Metric | Result |
+|---|---|
+| accuracy | **100%** (15/15) |
+| retrieval hit rate | **100%** |
+| refusal accuracy | **100%** (3/3 out-of-corpus refused) |
+| citation rate | **100%** |
+| mean / p95 latency | 1,402 ms / 1,610 ms |
+| total cost | $0.001310 |
+
+Every run is logged to MLflow under `stage=evaluation`, with a per-case TSV
+report and the list of threshold breaches as artifacts, so quality is tracked
+across commits rather than being a number someone once saw in a terminal.
 
 **There is no LLM judge.** A judge would cost money per run, make the CI gate
 non-deterministic, and inherit the blind spots of the model family it grades.
