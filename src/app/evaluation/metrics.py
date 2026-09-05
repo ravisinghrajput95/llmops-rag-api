@@ -59,9 +59,19 @@ def _doc_ids(sources) -> list[str]:
 
 
 def _matches_expected_doc(expected: str, retrieved: list[str]) -> bool:
-    """Match on substring, so a golden set can say "storage" and still match a
-    generated id like "doc-a1b2" carrying that filename in its metadata."""
-    return any(expected in doc or doc in expected for doc in retrieved)
+    """Exact match on doc id.
+
+    This was substring matching, which is actively wrong once the corpus holds
+    near-neighbour documents: expecting "cloud-run" would be satisfied by
+    retrieving "cloud-run-scaling", silently crediting a hit for fetching the
+    wrong document. Since discriminating between adjacent topics is exactly
+    what a retrieval metric is for, that failure mode inflates the one number
+    it is meant to police.
+
+    `ingest_corpus` sets each doc id to its filename stem, so exact equality
+    is what a golden case's `expected_doc` already means.
+    """
+    return expected in retrieved
 
 
 def score_case(case: GoldenCase, result) -> CaseScore:

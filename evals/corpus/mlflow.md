@@ -9,6 +9,6 @@ The tracking backend is a SQLite database. Artifacts, which include the
 question, the retrieved context and the final answer, are written to Cloud
 Storage so they outlive any single container instance.
 
-Cost is estimated from published OpenAI list prices rather than measured from
-an invoice. The gpt-4o-mini model is priced at fifteen cents per million input
-tokens and sixty cents per million output tokens.
+Cost is estimated from published list prices rather than measured from an
+invoice, so a run records an approximation of what a call cost and not a
+billed amount.

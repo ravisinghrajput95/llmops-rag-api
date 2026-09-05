@@ -197,35 +197,68 @@ class TestSummary:
 # --------------------------------------------------------------------------
 # The gate
 # --------------------------------------------------------------------------
+# The floor the fake embedder is held to. It is NOT a quality target.
+#
+# conftest's embedder is a hashed bag-of-words with no semantic content. Under
+# this suite's settings (chunk_size=400, top_k=3 -> 85 chunks, so ~3.5% of the
+# corpus per query) it scores a measured, deterministic 56.7% -- verified
+# identical across repeated runs. That is its ceiling, not a retrieval defect:
+# it cannot resolve "Why does chunking use overlap?" to a passage sharing few
+# literal tokens with it. text-embedding-3-small scores 100% on these same
+# cases.
+#
+# So the floor sits well below that baseline and exists to catch a retrieval
+# *collapse* -- a broken chunker, a mis-wired store, an inverted similarity
+# comparison. Real retrieval quality is measured by `make eval` against the
+# real embedder and gated at 0.85 there.
+FAKE_EMBEDDER_RETRIEVAL_FLOOR = 0.45
+
+
 class TestRegressionGate:
     """Runs the real golden set through the real retrieval path.
 
-    Generation is faked, so only the retrieval-side thresholds are asserted.
-    Chunking changes, embedding changes and similarity-floor changes all show
-    up here.
+    Generation is faked, so only retrieval is asserted -- and only as a
+    tripwire; see FAKE_EMBEDDER_RETRIEVAL_FLOOR for why the number is low.
+    Chunking, embedding and similarity-floor changes all surface here.
     """
 
     def test_corpus_ingests(self, pipeline) -> None:
         assert ingest_corpus(pipeline, CORPUS_DIR) > 0
 
-    def test_retrieval_meets_its_floor(self, pipeline) -> None:
+    def test_corpus_is_larger_than_retrieval_depth(self, pipeline, settings) -> None:
+        """The guard that keeps the retrieval metric meaningful.
+
+        Retrieving k chunks from a corpus of roughly k makes a perfect hit rate
+        arithmetically inevitable and the metric worthless -- which is exactly
+        what the original 5-chunk corpus did. Fail loudly if the corpus ever
+        shrinks back to that.
+        """
+        chunks = ingest_corpus(pipeline, CORPUS_DIR)
+        assert chunks >= settings.top_k * 5, (
+            f"corpus is {chunks} chunks against top_k={settings.top_k}; "
+            "retrieval hit rate stops discriminating when the corpus is not "
+            "substantially larger than the retrieval depth"
+        )
+
+    def test_retrieval_has_not_collapsed(self, pipeline) -> None:
         ingest_corpus(pipeline, CORPUS_DIR)
         cases = load_golden_set(GOLDEN_PATH)
 
         summary, _ = run_evaluation(pipeline, cases, log_to_mlflow=False)
 
-        grounded = [c for c in cases if not c.is_refusal_case]
+        grounded = {c.id for c in cases if not c.is_refusal_case}
         assert summary.total == len(cases)
-        assert summary.retrieval_hit_rate >= 0.85, "retrieval regressed: " + "; ".join(
-            f"{s.case_id}: {s.failure_reason}"
-            for s in summary.failures
-            if s.case_id in {c.id for c in grounded}
+        assert summary.retrieval_hit_rate >= FAKE_EMBEDDER_RETRIEVAL_FLOOR, (
+            f"retrieval collapsed to {summary.retrieval_hit_rate:.1%}: "
+            + "; ".join(
+                f"{s.case_id}: {s.failure_reason}"
+                for s in summary.failures
+                if s.case_id in grounded
+            )
         )
 
-    # Deliberately NOT tested here: refusal accuracy. The fake embedder is a
-    # hashed bag-of-words, so an out-of-corpus question like "weather in
-    # Mumbai" scores 0.57 against the MLflow document on common-word overlap
-    # alone, where text-embedding-3-small would score it near zero. Asserting
-    # refusal against that fake would measure the fake, not the system.
-    # scripts/run_eval.py measures it against the real model, where the
-    # similarity floor and the refusal instruction both actually apply.
+    # Deliberately NOT tested here: refusal accuracy. The same bag-of-words
+    # limitation means an out-of-corpus question scores far too highly against
+    # unrelated text, so asserting refusal here would measure the fake rather
+    # than the system. scripts/run_eval.py measures it against the real model,
+    # where the similarity floor and the refusal instruction both apply.
