@@ -22,6 +22,7 @@ terraform/
 scripts/
 tests/
 docs/
+evals/   # golden set + corpus: used by CI and `make eval`, never at runtime
 *.md
 !README.md
 .DS_Store
