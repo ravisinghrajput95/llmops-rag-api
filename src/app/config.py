@@ -77,6 +77,16 @@ class Settings(BaseSettings):
     # Used only to render a friendly rupee figure next to the USD estimate.
     usd_to_inr: float = 88.0
 
+    # --- Spend and abuse ceilings ----------------------------------------
+    # Hard daily cap on estimated OpenAI spend, in USD. GCP teardown does not
+    # stop the OpenAI bill, so this is the only thing bounding it. 0 disables.
+    # $0.25/day is ~1,200 typical queries on gpt-4o-mini -- far more than a
+    # demo needs, and ~₹22 if something goes wrong for a whole day.
+    daily_budget_usd: float = 0.25
+    # Per-client request ceiling. 0 disables. Both limiters hold state in
+    # process, so the effective allowance scales with instance count.
+    rate_limit_per_minute: int = 30
+
     @property
     def auth_enabled(self) -> bool:
         return bool(self.app_api_key)

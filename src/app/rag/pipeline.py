@@ -16,6 +16,7 @@ from app.rag.chunking import Chunk, chunk_document, content_hash
 from app.rag.vectorstore import ChromaVectorStore, RetrievedChunk
 from app.tracking.cost import estimate_cost_usd, usd_to_inr
 from app.tracking.mlflow_tracker import MLflowTracker, RunPayload
+from app.tracking.spend_guard import SpendGuard
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +80,16 @@ class RAGPipeline:
         embedding_client: EmbeddingClient,
         chat_client: ChatClient,
         tracker: MLflowTracker,
+        spend_guard: SpendGuard | None = None,
     ) -> None:
         self._settings = settings
         self._store = store
         self._embeddings = embedding_client
         self._chat = chat_client
         self._tracker = tracker
+        # Default to a disabled guard so every existing caller (and every
+        # test) keeps working without knowing budgets exist.
+        self._spend = spend_guard or SpendGuard(budget_usd=0.0)
 
     def collection_size(self) -> int:
         return self._store.count()
@@ -92,11 +97,25 @@ class RAGPipeline:
     def tracker_info(self) -> dict:
         return self._tracker.describe()
 
+    def spend_info(self) -> dict:
+        snap = self._spend.snapshot()
+        return {
+            "enabled": snap.enabled,
+            "spent_usd": snap.spent_usd,
+            "budget_usd": snap.budget_usd,
+            "remaining_usd": snap.remaining_usd,
+            "calls": snap.calls,
+            "window_resets_in_seconds": snap.window_resets_in_seconds,
+        }
+
     # -- ingest ------------------------------------------------------------
     def ingest(self, documents: list[tuple[str, str | None, dict[str, str]]]) -> IngestResult:
         """documents: list of (text, doc_id_or_None, metadata)."""
         started = time.perf_counter()
         settings = self._settings
+        # Embedding a large upload is the single most expensive thing this
+        # service does, so the ceiling is checked before any of it happens.
+        self._spend.check()
 
         all_chunks: list[Chunk] = []
         doc_ids: list[str] = []
@@ -125,6 +144,7 @@ class RAGPipeline:
             self._store.add(all_chunks, result.vectors)
 
         cost_usd = estimate_cost_usd(settings.embedding_model, prompt_tokens=embedding_tokens)
+        self._spend.record(cost_usd)
         latency_ms = (time.perf_counter() - started) * 1000
 
         outcome = IngestResult(
@@ -175,6 +195,7 @@ class RAGPipeline:
         started = time.perf_counter()
         settings = self._settings
         k = top_k or settings.top_k
+        self._spend.check()
 
         # 1. Embed the question and retrieve.
         retrieval_started = time.perf_counter()
@@ -202,6 +223,7 @@ class RAGPipeline:
                 ),
             )
             outcome.cost_inr = usd_to_inr(outcome.cost_usd, settings.usd_to_inr)
+            self._spend.record(outcome.cost_usd)
             logger.info(
                 "query returned no context",
                 extra={"question_chars": len(question), "top_k": k},
@@ -222,6 +244,7 @@ class RAGPipeline:
         )
         embed_cost = estimate_cost_usd(settings.embedding_model, prompt_tokens=embedded.tokens)
         total_cost = round(chat_cost + embed_cost, 8)
+        self._spend.record(total_cost)
 
         outcome = QueryResult(
             answer=completion.text,

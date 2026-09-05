@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -18,6 +19,7 @@ from app.logging_config import (
     trace_context,
 )
 from app.rag.pipeline import RAGPipeline
+from app.rate_limit import RateLimiter
 from app.schemas import (
     HealthResponse,
     IngestRequest,
@@ -28,10 +30,15 @@ from app.schemas import (
     SourceChunk,
     TokenUsage,
 )
+from app.tracking.spend_guard import BudgetExceededError
 
 logger = logging.getLogger(__name__)
 
 ALLOWED_UPLOAD_SUFFIXES = (".txt", ".md", ".markdown", ".text")
+
+# Endpoints that cost money. /health and /ready stay unthrottled so uptime
+# checks and Cloud Run startup probes can never be rate limited.
+METERED_PATHS = ("/ingest", "/query")
 
 # Configure logging at import time, not in lifespan: uvicorn emits its own
 # startup lines before lifespan runs, and those would otherwise escape as
@@ -42,6 +49,8 @@ configure_logging(
     service_name=_settings.service_name,
     project_id=_settings.gcp_project_id,
 )
+
+_rate_limiter = RateLimiter(requests_per_minute=_settings.rate_limit_per_minute)
 
 
 @asynccontextmanager
@@ -90,6 +99,67 @@ async def trace_middleware(request: Request, call_next):
         return await call_next(request)
     finally:
         trace_context.reset(token)
+
+
+def _client_key(request: Request) -> str:
+    """Identify the caller for throttling.
+
+    Prefer the API key over the IP: behind Cloud Run every request arrives
+    from Google's front end, and X-Forwarded-For is client-controlled, so IP
+    alone is both unreliable and spoofable. Keys are hashed so no secret ever
+    reaches a log line.
+    """
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        return "key:" + hashlib.sha256(api_key.encode()).hexdigest()[:16]
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    client_ip = forwarded.split(",")[0].strip() or (
+        request.client.host if request.client else "unknown"
+    )
+    return "ip:" + client_ip
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if _rate_limiter.enabled and request.url.path.startswith(METERED_PATHS):
+        allowed, retry_after = _rate_limiter.allow(_client_key(request))
+        if not allowed:
+            logger.warning(
+                "rate limited", extra={"path": request.url.path, "retry_after": retry_after}
+            )
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={
+                    "detail": "Rate limit exceeded.",
+                    "retry_after_seconds": retry_after,
+                },
+                headers={"Retry-After": str(int(retry_after) + 1)},
+            )
+    return await call_next(request)
+
+
+@app.exception_handler(BudgetExceededError)
+async def budget_exceeded_handler(request: Request, exc: BudgetExceededError) -> JSONResponse:
+    """The daily spend ceiling. 429 rather than 503: the service is healthy,
+    the caller simply may not spend more today."""
+    logger.error(
+        "daily budget exhausted -- refusing to spend",
+        extra={
+            "path": request.url.path,
+            "spent_usd": exc.spent_usd,
+            "budget_usd": exc.budget_usd,
+        },
+    )
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={
+            "detail": "Daily spend ceiling reached; no further LLM calls today.",
+            "spent_usd": exc.spent_usd,
+            "budget_usd": exc.budget_usd,
+            "resets_in_seconds": exc.resets_in_seconds,
+        },
+        headers={"Retry-After": str(exc.resets_in_seconds)},
+    )
 
 
 @app.exception_handler(OpenAIError)
@@ -142,6 +212,7 @@ def ready(
         collection_size=pipeline.collection_size(),
         mlflow_enabled=settings.mlflow_enabled,
         openai_configured=bool(settings.openai_api_key),
+        spend=pipeline.spend_info(),
     )
 
 

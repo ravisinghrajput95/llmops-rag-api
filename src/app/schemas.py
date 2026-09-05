@@ -87,3 +87,6 @@ class ReadyResponse(BaseModel):
     collection_size: int
     mlflow_enabled: bool
     openai_configured: bool
+    # Present so an operator can see remaining daily budget without shelling
+    # into logs. Unauthenticated, so it deliberately exposes only aggregates.
+    spend: dict = Field(default_factory=dict)

@@ -19,6 +19,7 @@ from app.llm.openai_client import (
 from app.rag.pipeline import RAGPipeline
 from app.rag.vectorstore import ChromaVectorStore
 from app.tracking.mlflow_tracker import MLflowTracker
+from app.tracking.spend_guard import SpendGuard
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ def build_pipeline(settings: Settings) -> RAGPipeline:
         embedding_client=OpenAIEmbeddingClient(openai_client, settings),
         chat_client=OpenAIChatClient(openai_client, settings),
         tracker=MLflowTracker(settings),
+        spend_guard=SpendGuard(budget_usd=settings.daily_budget_usd),
     )
 
 

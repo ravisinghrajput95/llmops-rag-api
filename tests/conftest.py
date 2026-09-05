@@ -33,6 +33,12 @@ os.environ.update(
         "APP_API_KEY": "",
         "LOG_LEVEL": "WARNING",
         "GCP_PROJECT_ID": "test-project",
+        # The spend ceiling and rate limiter hold process-wide state, so left
+        # on they would couple every test to how many requests ran before it.
+        # Both are covered directly in test_spend_guard.py, and exercised
+        # end-to-end in test_limits.py against purpose-built instances.
+        "DAILY_BUDGET_USD": "0",
+        "RATE_LIMIT_PER_MINUTE": "0",
     }
 )
 
