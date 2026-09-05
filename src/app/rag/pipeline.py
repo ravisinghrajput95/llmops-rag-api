@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from app.config import Settings
 from app.llm.openai_client import ChatClient, EmbeddingClient
+from app.persistence import SnapshotStore
 from app.rag.chunking import Chunk, chunk_document, content_hash
 from app.rag.vectorstore import ChromaVectorStore, RetrievedChunk
 from app.tracking.cost import estimate_cost_usd, usd_to_inr
@@ -81,6 +82,7 @@ class RAGPipeline:
         chat_client: ChatClient,
         tracker: MLflowTracker,
         spend_guard: SpendGuard | None = None,
+        snapshots: SnapshotStore | None = None,
     ) -> None:
         self._settings = settings
         self._store = store
@@ -90,12 +92,17 @@ class RAGPipeline:
         # Default to a disabled guard so every existing caller (and every
         # test) keeps working without knowing budgets exist.
         self._spend = spend_guard or SpendGuard(budget_usd=0.0)
+        # A disabled store by default, so nothing touches GCS unless asked.
+        self._snapshots = snapshots or SnapshotStore(bucket="", object_name="", enabled=False)
 
     def collection_size(self) -> int:
         return self._store.count()
 
     def tracker_info(self) -> dict:
         return self._tracker.describe()
+
+    def persistence_info(self) -> dict:
+        return {"enabled": self._snapshots.enabled, "uri": self._snapshots.uri}
 
     def spend_info(self) -> dict:
         snap = self._spend.snapshot()
@@ -168,6 +175,11 @@ class RAGPipeline:
                 "latency_ms": outcome.latency_ms,
             },
         )
+
+        # Persist only when something changed. Snapshotting an unchanged
+        # store would burn a GCS write per no-op request.
+        if all_chunks and self._settings.snapshot_on_ingest and self._snapshots.enabled:
+            self._snapshots.save(self._settings.chroma_dir)
 
         self._tracker.log_run(
             run_name="ingest",

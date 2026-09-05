@@ -213,6 +213,7 @@ def ready(
         mlflow_enabled=settings.mlflow_enabled,
         openai_configured=bool(settings.openai_api_key),
         spend=pipeline.spend_info(),
+        persistence=pipeline.persistence_info(),
     )
 
 

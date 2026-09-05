@@ -16,6 +16,7 @@ from app.llm.openai_client import (
     OpenAIEmbeddingClient,
     build_openai_client,
 )
+from app.persistence import SnapshotStore
 from app.rag.pipeline import RAGPipeline
 from app.rag.vectorstore import ChromaVectorStore
 from app.tracking.mlflow_tracker import MLflowTracker
@@ -26,6 +27,17 @@ logger = logging.getLogger(__name__)
 
 def build_pipeline(settings: Settings) -> RAGPipeline:
     """Construct the real, network-backed pipeline. Called once on startup."""
+    snapshots = SnapshotStore(
+        bucket=settings.gcs_bucket,
+        object_name=settings.chroma_snapshot_object,
+        enabled=settings.persistence_enabled,
+    )
+    # Restore BEFORE Chroma opens the directory: PersistentClient reads its
+    # SQLite file and HNSW index at construction, so a restore afterwards
+    # would be invisible until the next cold start.
+    if snapshots.enabled:
+        snapshots.restore(settings.chroma_dir)
+
     store = ChromaVectorStore(
         persist_dir=settings.chroma_dir, collection_name=settings.chroma_collection
     )
@@ -37,6 +49,7 @@ def build_pipeline(settings: Settings) -> RAGPipeline:
         chat_client=OpenAIChatClient(openai_client, settings),
         tracker=MLflowTracker(settings),
         spend_guard=SpendGuard(budget_usd=settings.daily_budget_usd),
+        snapshots=snapshots,
     )
 
 

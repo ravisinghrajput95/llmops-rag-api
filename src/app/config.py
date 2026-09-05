@@ -77,6 +77,17 @@ class Settings(BaseSettings):
     # Used only to render a friendly rupee figure next to the USD estimate.
     usd_to_inr: float = 88.0
 
+    # --- Durability -------------------------------------------------------
+    # Cloud Run's filesystem is a per-instance tmpfs, so without this the
+    # vector store is lost on scale-to-zero. Set to the MLflow artifact bucket
+    # to snapshot Chroma there on ingest and restore it on cold start. Empty
+    # disables persistence entirely, which is the right default locally.
+    gcs_bucket: str = ""
+    chroma_snapshot_object: str = "snapshots/chroma.tar.gz"
+    # Snapshotting adds a GCS round trip to /ingest (not to /query). Turn off
+    # to keep ingest fast and accept ephemeral state.
+    snapshot_on_ingest: bool = True
+
     # --- Spend and abuse ceilings ----------------------------------------
     # Hard daily cap on estimated OpenAI spend, in USD. GCP teardown does not
     # stop the OpenAI bill, so this is the only thing bounding it. 0 disables.
@@ -90,6 +101,10 @@ class Settings(BaseSettings):
     @property
     def auth_enabled(self) -> bool:
         return bool(self.app_api_key)
+
+    @property
+    def persistence_enabled(self) -> bool:
+        return bool(self.gcs_bucket)
 
 
 @lru_cache
