@@ -58,10 +58,41 @@ jobs:
 
       - name: Authenticate to Google Cloud
         id: auth
+        # Allowed to fail so the explainer step below can say *why*. A
+        # destroyed Workload Identity pool fails here, before any check that
+        # needs gcloud can run -- authenticating is itself the first thing
+        # that depends on the infrastructure being present.
+        continue-on-error: true
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Explain an authentication failure
+        if: steps.auth.outcome == 'failure'
+        run: |
+          {
+            echo "### Could not authenticate to Google Cloud"
+            echo ""
+            echo "The Workload Identity provider in \`GCP_WORKLOAD_IDENTITY_PROVIDER\`"
+            echo "could not be used. The usual cause is that the infrastructure was"
+            echo "torn down, which this project is designed to do between demos."
+            echo ""
+            echo "Two things change on every re-provision, and both must be updated:"
+            echo ""
+            echo "1. \`wif_pool_id\` in \`terraform/terraform.tfvars\` -- pool ids stay"
+            echo "   reserved for **30 days** after a destroy and cannot be reused."
+            echo "2. The \`GCP_WORKLOAD_IDENTITY_PROVIDER\` secret, which contains that"
+            echo "   pool id and is therefore stale the moment it changes."
+            echo ""
+            echo '```bash'
+            echo "cd terraform && terraform apply"
+            echo "gh secret set GCP_WORKLOAD_IDENTITY_PROVIDER \\"
+            echo "  --body \"\$(terraform output -raw github_secret_gcp_workload_identity_provider)\""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Authentication failed -- see the job summary for the fix."
+          exit 1
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
