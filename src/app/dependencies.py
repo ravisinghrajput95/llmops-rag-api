@@ -47,7 +47,16 @@ def build_pipeline(settings: Settings) -> RAGPipeline:
         store=store,
         embedding_client=OpenAIEmbeddingClient(openai_client, settings),
         chat_client=OpenAIChatClient(openai_client, settings),
-        tracker=MLflowTracker(settings),
+        tracker=MLflowTracker(
+            settings,
+            # A separate object from the Chroma snapshot: the two change at
+            # different rates and must not overwrite one another.
+            snapshots=SnapshotStore(
+                bucket=settings.gcs_bucket,
+                object_name=settings.mlflow_snapshot_object,
+                enabled=settings.persistence_enabled,
+            ),
+        ),
         spend_guard=SpendGuard(budget_usd=settings.daily_budget_usd),
         snapshots=snapshots,
     )

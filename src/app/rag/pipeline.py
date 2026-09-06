@@ -96,6 +96,10 @@ class RAGPipeline:
     def persistence_info(self) -> dict:
         return {"enabled": self._snapshots.enabled, "uri": self._snapshots.uri}
 
+    def flush_tracking(self) -> None:
+        """Persist tracking state before the instance goes away."""
+        self._tracker.flush()
+
     def prompt_info(self) -> dict:
         return self._prompts.describe()
 

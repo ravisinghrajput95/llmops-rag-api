@@ -74,6 +74,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.pipeline = None
         logger.error("pipeline initialisation failed", exc_info=True)
     yield
+
+    # Cloud Run's tmpfs goes with the instance, taking the tracking DB and
+    # every run recorded since the last threshold snapshot. SIGTERM gives ~10
+    # seconds, which is enough for one small upload and is why this is worth
+    # attempting even though it is not guaranteed to run.
+    pipeline = getattr(app.state, "pipeline", None)
+    if pipeline is not None:
+        pipeline.flush_tracking()
     logger.info("shutting down")
 
 

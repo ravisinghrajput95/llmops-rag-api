@@ -24,6 +24,7 @@ from urllib.parse import urlparse
 
 from app.config import Settings
 from app.logging_config import ensure_structured_logging
+from app.persistence import SnapshotStore
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +41,18 @@ class RunPayload:
 
 
 class MLflowTracker:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, snapshots: SnapshotStore | None = None) -> None:
         self.enabled = settings.mlflow_enabled
         self._settings = settings
         self._experiment_id: str | None = None
         self._lock = threading.Lock()
         self._mlflow: Any = None
+        # The tracker owns its own durability: nothing else knows when the
+        # backing file has changed, and a restore has to happen before the
+        # first connection opens it.
+        self._snapshots = snapshots or SnapshotStore("", "", enabled=False)
+        self._db_dir: Path | None = None
+        self._runs_since_snapshot = 0
 
         if not self.enabled:
             logger.info("mlflow tracking disabled")
@@ -71,6 +78,12 @@ class MLflowTracker:
             db_path = Path(uri.replace("sqlite:///", "", 1))
             if db_path.parent and str(db_path.parent) not in ("", "."):
                 db_path.parent.mkdir(parents=True, exist_ok=True)
+                self._db_dir = db_path.parent
+                # Before anything opens the file: SQLAlchemy holds the SQLite
+                # file open from first connection, so restoring afterwards
+                # would be overwritten rather than read.
+                if self._snapshots.enabled:
+                    self._snapshots.restore(str(db_path.parent))
 
         mlflow.set_tracking_uri(uri)
 
@@ -140,7 +153,28 @@ class MLflowTracker:
                             self._mlflow.log_text(content, name)
         # Guard against MLflow reconfiguring logging on any later code path.
         ensure_structured_logging()
+
+        if run_id is not None:
+            self._runs_since_snapshot += 1
+            every = self._settings.mlflow_snapshot_every
+            if every > 0 and self._runs_since_snapshot >= every:
+                self.flush()
         return run_id
+
+    def flush(self) -> None:
+        """Push the tracking DB to durable storage. Safe to call at any time.
+
+        Called on a run-count threshold and again at shutdown, so an instance
+        that is being drained saves what the threshold has not yet covered.
+        Cloud Run's SIGTERM grace period makes that best-effort, not a
+        guarantee -- hence the threshold as well.
+        """
+        if not self._snapshots.enabled or self._db_dir is None:
+            return
+        self._runs_since_snapshot = 0
+        with self._guard():
+            with self._lock:
+                self._snapshots.save(str(self._db_dir))
 
     def describe(self) -> dict[str, Any]:
         return {

@@ -246,7 +246,10 @@ resource "google_cloud_run_v2_service" "api" {
       }
       env {
         name  = "MLFLOW_TRACKING_URI"
-        value = "sqlite:////tmp/mlflow.db"
+        # In its own directory because the snapshot store moves whole
+        # directories, and this file has to outlive the instance for
+        # `make drift` to see production at all.
+        value = "sqlite:////tmp/mlflow/mlflow.db"
       }
       env {
         name  = "MLFLOW_ARTIFACT_LOCATION"

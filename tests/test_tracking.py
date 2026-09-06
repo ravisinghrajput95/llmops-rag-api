@@ -183,3 +183,116 @@ def test_oversized_param_values_are_truncated_for_mlflow():
 
     assert len(truncated["question"]) == 500
     assert truncated["question"].endswith("...")
+
+
+class TestTrackingDurability:
+    """The tracking DB has to outlive the instance, or drift is blind.
+
+    MLflow artifacts already reach GCS; the run *metrics and tags* the monitor
+    reads did not, because they live in a SQLite file on Cloud Run's tmpfs.
+    """
+
+    def _tracker(self, settings, store):
+        from app.tracking.mlflow_tracker import MLflowTracker
+
+        return MLflowTracker(settings, snapshots=store)
+
+    def test_runs_are_snapshotted_once_the_threshold_is_reached(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        from app.persistence import SnapshotStore
+
+        settings = Settings(
+            openai_api_key="x",
+            mlflow_enabled=True,
+            mlflow_tracking_uri=f"sqlite:///{tmp_path / 'mlflow' / 'm.db'}",
+            mlflow_experiment="durability",
+            mlflow_snapshot_every=3,
+        )
+        saved: list[str] = []
+        store = SnapshotStore("bucket", "snapshots/mlflow.tar.gz", enabled=True)
+        monkeypatch.setattr(store, "save", lambda source: saved.append(source))
+        tracker = self._tracker(settings, store)
+
+        for _ in range(3):
+            tracker.log_run("query", RunPayload(metrics={"refused": 0.0}))
+
+        assert len(saved) == 1, "one upload per threshold, not one per run"
+        assert saved[0].endswith("mlflow")
+
+    def test_a_snapshot_is_restored_before_the_database_is_opened(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Order matters: SQLAlchemy holds the file open from first connect, so
+        a restore afterwards is overwritten rather than read."""
+        from app.persistence import SnapshotStore
+
+        settings = Settings(
+            openai_api_key="x",
+            mlflow_enabled=True,
+            mlflow_tracking_uri=f"sqlite:///{tmp_path / 'mlflow' / 'm.db'}",
+            mlflow_experiment="restore-order",
+        )
+        events: list[str] = []
+        store = SnapshotStore("bucket", "snapshots/mlflow.tar.gz", enabled=True)
+        monkeypatch.setattr(store, "restore", lambda target: events.append("restore"))
+        monkeypatch.setattr(store, "save", lambda source: events.append("save"))
+
+        tracker = self._tracker(settings, store)
+        tracker.log_run("query", RunPayload(metrics={"refused": 1.0}))
+
+        assert events and events[0] == "restore"
+
+    def test_flush_uploads_whatever_the_threshold_has_not(self, tmp_path, monkeypatch) -> None:
+        from app.persistence import SnapshotStore
+
+        settings = Settings(
+            openai_api_key="x",
+            mlflow_enabled=True,
+            mlflow_tracking_uri=f"sqlite:///{tmp_path / 'mlflow' / 'm.db'}",
+            mlflow_experiment="flush",
+            mlflow_snapshot_every=100,
+        )
+        saved: list[str] = []
+        store = SnapshotStore("bucket", "snapshots/mlflow.tar.gz", enabled=True)
+        monkeypatch.setattr(store, "save", lambda source: saved.append(source))
+        tracker = self._tracker(settings, store)
+        tracker.log_run("query", RunPayload(metrics={"refused": 0.0}))
+        assert saved == []
+
+        tracker.flush()
+
+        assert len(saved) == 1
+
+    def test_a_failing_snapshot_never_breaks_a_request(self, tmp_path, monkeypatch) -> None:
+        from app.persistence import SnapshotStore
+
+        settings = Settings(
+            openai_api_key="x",
+            mlflow_enabled=True,
+            mlflow_tracking_uri=f"sqlite:///{tmp_path / 'mlflow' / 'm.db'}",
+            mlflow_experiment="failopen",
+            mlflow_snapshot_every=1,
+        )
+
+        def explode(source):
+            raise RuntimeError("GCS is down")
+
+        store = SnapshotStore("bucket", "snapshots/mlflow.tar.gz", enabled=True)
+        monkeypatch.setattr(store, "save", explode)
+        tracker = self._tracker(settings, store)
+
+        assert tracker.log_run("query", RunPayload(metrics={"refused": 0.0})) is not None
+
+    def test_snapshotting_is_off_without_a_bucket(self, tmp_path) -> None:
+        """The local default must stay GCP-free."""
+        settings = Settings(
+            openai_api_key="x",
+            mlflow_enabled=True,
+            mlflow_tracking_uri=f"sqlite:///{tmp_path / 'mlflow' / 'm.db'}",
+            mlflow_experiment="nobucket",
+        )
+        tracker = self._tracker(settings, None)
+
+        tracker.flush()  # must not raise
+        assert tracker.log_run("query", RunPayload()) is not None

@@ -131,6 +131,14 @@ conversation.
   and the real refusal outcome for all 128 golden questions. It exists so
   `scripts/validate_drift.py` can characterise the detector for free. Regenerate
   it when the corpus, the retrieval config or the embedding model changes.
+- **The MLflow DB is snapshotted to GCS, and it has to be.** It lives on Cloud
+  Run's tmpfs, so without this the run metadata `make drift` reads dies on every
+  scale-to-zero and the monitor is blind to production while looking healthy.
+  Restore happens inside `MLflowTracker._init_backend` *before* the first
+  connection opens the file — SQLAlchemy holds it open from then on, so a later
+  restore is overwritten rather than read. Uploads are batched every
+  `MLFLOW_SNAPSHOT_EVERY` runs because GCS allows 5,000 free class A operations
+  a month and a write per query would spend them.
 - Runs recorded before the `refused` metric existed are skipped, not defaulted.
   Defaulting them to "not refused" would read a window of old traffic as a
   perfect zero refusal rate.

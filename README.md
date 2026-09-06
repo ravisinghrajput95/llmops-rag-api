@@ -398,6 +398,18 @@ that question, and the refusal rate over a window estimates how much traffic
 the corpus cannot serve — a quality measurement extracted from an unlabelled
 stream.
 
+**Where the data comes from.** Cloud Run's filesystem is a per-instance tmpfs,
+so the MLflow tracking database — the params, metrics and tags this reads —
+used to die on every scale-to-zero, while only artifacts reached GCS. Drift
+detection was therefore blind to production by construction. The tracking DB is
+now snapshotted into the same Always-Free bucket as the Chroma store, restored
+on cold start, and pushed every `MLFLOW_SNAPSHOT_EVERY` runs (25 by default)
+plus once on shutdown. Batching is deliberate: Cloud Storage's free tier allows
+5,000 class A operations a month and a write per query would spend them. The
+cost is bounded and stated — up to that many runs are lost if an instance dies
+between snapshots, which skews nothing when drift is measured over a window of
+tens of queries.
+
 **Two signals, because one cannot say why.** Rising refusals mean something is
 wrong, not what. The pairing that resolves it comes straight out of the floor
 research above: near-miss questions score *identically* to answerable ones and
