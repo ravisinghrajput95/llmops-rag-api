@@ -1,12 +1,31 @@
 # LLMOps RAG API — Cloud Run, MLflow, and a hard budget ceiling
 
+[![CI](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/ci.yml/badge.svg)](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/ci.yml)
+[![Deploy](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/deploy.yml/badge.svg)](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/deploy.yml)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![Tests](https://img.shields.io/badge/tests-185%20passing-brightgreen)
+
 A production-shaped RAG service built to run on **₹0 of GCP spend**: FastAPI +
 Chroma + OpenAI, deployed to Cloud Run with keyless GitHub Actions CI/CD, with
 every request's latency, token usage and estimated cost logged to MLflow.
 
-Built under a specific constraint — **₹266 in trial credits, 10 days to
-expiry** — so cost is treated as a first-class design input, not a footnote.
-Every architectural decision below is justified in terms of what it costs.
+What makes it LLMOps rather than a RAG demo is everything downstream of the
+answer: a 128-case golden set with a quality gate in CI, prompts versioned
+behind a content-addressed lock so a wording change cannot slip into eval
+history unnoticed, retrieval parameters chosen by measured sweep rather than by
+guess, and drift detection that watches live traffic which has no labels at all.
+
+| Measured | |
+|---|---|
+| Eval (128 cases, `gpt-4o-mini`) | 98.4% accuracy · 100% retrieval · 98.5% refusal · 100% citations |
+| Cost per query | ~₹0.03, measured not modelled |
+| Cost per full eval run | $0.0094 |
+| GCP spend at demo scale | ₹0 — every resource inside Always Free |
+
+Built under a specific constraint — **₹266 of GCP trial credit expiring
+15 Sep 2026** — so cost is treated as a first-class design input, not a
+footnote. Every architectural decision below is justified in terms of what it
+costs.
 
 ---
 
@@ -16,7 +35,7 @@ These are separate, and conflating them is the fastest way to get surprised.
 
 | | Pays for | Funded by | Runs out |
 |---|---|---|---|
-| **Google Cloud** | Cloud Run, storage, registry | Your ₹266 trial credits, then Always Free quotas | Credits expire in 10 days |
+| **Google Cloud** | Cloud Run, storage, registry | GCP trial credit, then Always Free quotas | Credit expires 15 Sep 2026; the service keeps running on Always Free |
 | **OpenAI** | `gpt-4o-mini` + embedding calls | Your OpenAI account balance | Independent of GCP entirely |
 
 **GCP trial credits do not pay for OpenAI.** The design keeps GCP usage inside
@@ -326,23 +345,27 @@ remaining budget** this project was built against.
 
 ## Evaluation
 
-Cost and latency were always measured; answer quality was not. A 15-case
-golden set (`evals/golden.jsonl`) over a small corpus (`evals/corpus/`) now
-scores:
+Cost and latency were always measured; answer quality was not. A 128-case
+golden set (`evals/golden.jsonl`) over a 22-document corpus (`evals/corpus/`)
+now scores:
 
 | Metric | What it catches |
 |---|---|
 | `retrieval_hit_rate` | The expected document was retrieved. Chunking and similarity-floor regressions show up here first. |
 | `keyword_hit` | The answer contains a fact the corpus supports. |
-| `refusal_accuracy` | Out-of-corpus questions get "I don't know". **Floor is 100%** — a confident hallucination is worse than no answer. |
+| `refusal_accuracy` | Out-of-corpus questions get "I don't know". **Floor is 98%** — a confident hallucination is worse than no answer, and the floor admits exactly one known failure (see below). |
 | `citation_rate` | Answers cite passages as `[n]`, as the prompt requires. |
 
-Six of the 31 cases are adversarial out-of-corpus questions: plausibly
-adjacent topics (AWS Lambda, Azure Functions), missing metadata phrased to
-sound answerable ("who wrote these documents?"), and an instruction-override
-attempt. The grounded cases deliberately include numeric precision (two
-adjacent figures that are easy to confuse), negation, conditional consequences
-and one cross-document question.
+**67 of the 128 cases are out-of-corpus**, and 34 of those are deliberate
+near-misses — questions on topics the corpus covers whose specific fact it
+lacks ("what is Cloud Run's maximum request timeout?"). That tier exists
+because an earlier refusal metric measured over eight mostly-easy negatives
+(weather, recipes, AWS) was flattering the system by 26 points; see
+[Why the floor stops here](#why-the-floor-stops-here). The rest are adjacent
+technologies, questions about the collection itself, plainly unrelated
+subjects, and instruction-override attempts. The grounded cases deliberately
+include numeric precision, negation, conditional consequences and
+cross-document questions.
 
 **Latest run** (`make eval`, `gpt-4o-mini`, prompt v2, 2026-09-06 — 128 cases, 22 documents):
 
@@ -897,6 +920,7 @@ the pruned image cannot construct the app.
 |---|---|---|
 | `exec format error` on Cloud Run | arm64 image built on Apple Silicon | `make docker-build` (pins `--platform linux/amd64`) |
 | `503` from `/ingest` or `/query` | `OPENAI_API_KEY` missing at startup | Check startup logs; `/health` stays up deliberately so you can see this |
-| Query returns "I don't know" | Empty collection, or the instance scaled to zero | Re-ingest; see [Known limitation](#known-limitation-chroma-is-ephemeral-on-cloud-run) |
-| MLflow runs missing on Cloud Run | SQLite lives in ephemeral `/tmp` | Expected; artifacts still reach GCS |
+| Query returns "I don't know" | Nothing ingested yet, or the corpus genuinely cannot answer it | Check `/ready` for `collection_size`; refusing an unanswerable question is correct behaviour, see [Why the floor stops here](#why-the-floor-stops-here) |
+| Ingested documents disappear | Snapshot restore failed on cold start | See [Durability](#durability-how-state-survives-scale-to-zero); check startup logs for `snapshot restored` |
+| `make drift` sees fewer runs than you sent | Runs reach GCS in batches of `MLFLOW_SNAPSHOT_EVERY` (25) | Expected; the newest few are still in the instance's `/tmp` until the next threshold or shutdown |
 | WIF auth fails in CI | `attribute_condition` doesn't match the repo | Confirm `github_repo` is exactly `owner/repo` |
