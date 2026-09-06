@@ -143,6 +143,11 @@ conversation.
   object means instances overwriting each other's runs wholesale at
   `max-instances=2`. Uploads are batched because GCS allows 5,000 free class A
   operations a month and a write per query would spend them.
+- **Bucket lifecycle rules are prefix-scoped, and must stay that way.** An
+  unscoped age rule covers `snapshots/chroma.tar.gz` too, so a service left idle
+  longer than the retention window silently loses every ingested document — the
+  one object in that bucket that cannot be regenerated. Artifacts and MLflow
+  shards expire; the Chroma snapshot does not.
 - Runs recorded before the `refused` metric existed are skipped, not defaulted.
   Defaulting them to "not refused" would read a window of old traffic as a
   perfect zero refusal rate.

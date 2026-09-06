@@ -88,9 +88,27 @@ resource "google_storage_bucket" "mlflow_artifacts" {
   # important when you are racing a credit expiry deadline.
   force_destroy = true
 
+  # Scoped by prefix rather than applied to the whole bucket. An unscoped age
+  # rule also deletes snapshots/chroma.tar.gz, so a service left idle longer
+  # than the retention window would silently lose every ingested document --
+  # the one object here that cannot be regenerated.
   lifecycle_rule {
     condition {
-      age = var.mlflow_artifact_retention_days
+      age            = var.mlflow_artifact_retention_days
+      matches_prefix = ["mlflow/"]
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  # Tracking snapshots are sharded one object per instance, so without an
+  # expiry they accumulate one per cold start forever. Expiring them is
+  # deliberate and bounds what `make drift` sees to a rolling window.
+  lifecycle_rule {
+    condition {
+      age            = var.mlflow_artifact_retention_days
+      matches_prefix = ["snapshots/mlflow/"]
     }
     action {
       type = "Delete"
@@ -245,7 +263,7 @@ resource "google_cloud_run_v2_service" "api" {
         value = "/tmp/chroma"
       }
       env {
-        name  = "MLFLOW_TRACKING_URI"
+        name = "MLFLOW_TRACKING_URI"
         # In its own directory because the snapshot store moves whole
         # directories, and this file has to outlive the instance for
         # `make drift` to see production at all.
