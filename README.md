@@ -4,6 +4,7 @@
 [![Deploy](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/deploy.yml/badge.svg)](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/deploy.yml)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Tests](https://img.shields.io/badge/tests-185%20passing-brightgreen)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A production-shaped RAG service built to run on **₹0 of GCP spend**: FastAPI +
 Chroma + OpenAI, deployed to Cloud Run with keyless GitHub Actions CI/CD, with
@@ -924,3 +925,9 @@ the pruned image cannot construct the app.
 | Ingested documents disappear | Snapshot restore failed on cold start | See [Durability](#durability-how-state-survives-scale-to-zero); check startup logs for `snapshot restored` |
 | `make drift` sees fewer runs than you sent | Runs reach GCS in batches of `MLFLOW_SNAPSHOT_EVERY` (25) | Expected; the newest few are still in the instance's `/tmp` until the next threshold or shutdown |
 | WIF auth fails in CI | `attribute_condition` doesn't match the repo | Confirm `github_repo` is exactly `owner/repo` |
+
+---
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
