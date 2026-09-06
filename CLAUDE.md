@@ -135,11 +135,14 @@ conversation.
 - **The MLflow DB is snapshotted to GCS, and it has to be.** It lives on Cloud
   Run's tmpfs, so without this the run metadata `make drift` reads dies on every
   scale-to-zero and the monitor is blind to production while looking healthy.
-  Restore happens inside `MLflowTracker._init_backend` *before* the first
-  connection opens the file — SQLAlchemy holds it open from then on, so a later
-  restore is overwritten rather than read. Uploads are batched every
-  `MLFLOW_SNAPSHOT_EVERY` runs because GCS allows 5,000 free class A operations
-  a month and a write per query would spend them.
+- **It is sharded per process, and must stay that way.** Each instance writes
+  `snapshots/mlflow/<revision>-<id>.tar.gz` and never restores anyone else's;
+  the reader merges. Do not "simplify" this back to one shared object like the
+  Chroma snapshot — that pattern is safe there only because ingest is rare. This
+  is written every `MLFLOW_SNAPSHOT_EVERY` runs by every instance, so a shared
+  object means instances overwriting each other's runs wholesale at
+  `max-instances=2`. Uploads are batched because GCS allows 5,000 free class A
+  operations a month and a write per query would spend them.
 - Runs recorded before the `refused` metric existed are skipped, not defaulted.
   Defaulting them to "not refused" would read a window of old traffic as a
   perfect zero refusal rate.

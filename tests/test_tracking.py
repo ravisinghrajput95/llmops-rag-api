@@ -220,28 +220,35 @@ class TestTrackingDurability:
         assert len(saved) == 1, "one upload per threshold, not one per run"
         assert saved[0].endswith("mlflow")
 
-    def test_a_snapshot_is_restored_before_the_database_is_opened(
+    def test_an_instance_never_reads_another_instances_shard(
         self, tmp_path, monkeypatch
     ) -> None:
-        """Order matters: SQLAlchemy holds the file open from first connect, so
-        a restore afterwards is overwritten rather than read."""
+        """Each process owns one object and starts empty.
+
+        This used to restore a single shared snapshot, which is what made two
+        instances overwrite each other's runs: both loaded the same file, both
+        appended to it, and whichever wrote last won. Owning a shard removes
+        the conflict instead of arbitrating it -- the reader merges.
+        """
         from app.persistence import SnapshotStore
 
         settings = Settings(
             openai_api_key="x",
             mlflow_enabled=True,
             mlflow_tracking_uri=f"sqlite:///{tmp_path / 'mlflow' / 'm.db'}",
-            mlflow_experiment="restore-order",
+            mlflow_experiment="no-restore",
         )
         events: list[str] = []
-        store = SnapshotStore("bucket", "snapshots/mlflow.tar.gz", enabled=True)
+        store = SnapshotStore("bucket", "snapshots/mlflow/a.tar.gz", enabled=True)
         monkeypatch.setattr(store, "restore", lambda target: events.append("restore"))
         monkeypatch.setattr(store, "save", lambda source: events.append("save"))
 
         tracker = self._tracker(settings, store)
         tracker.log_run("query", RunPayload(metrics={"refused": 1.0}))
+        tracker.flush()
 
-        assert events and events[0] == "restore"
+        assert "restore" not in events
+        assert events == ["save"]
 
     def test_flush_uploads_whatever_the_threshold_has_not(self, tmp_path, monkeypatch) -> None:
         from app.persistence import SnapshotStore

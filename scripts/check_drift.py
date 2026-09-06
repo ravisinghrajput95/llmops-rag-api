@@ -24,13 +24,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from app.config import get_settings  # noqa: E402
 from app.logging_config import configure_logging  # noqa: E402
 from app.monitoring.drift import Baseline, compare, format_report, summarise  # noqa: E402
-from app.monitoring.source import load_recent_queries  # noqa: E402
+from app.monitoring.source import (  # noqa: E402
+    load_recent_queries,
+    load_snapshot_queries,
+)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", default="evals/baseline.json")
     parser.add_argument("--limit", type=int, default=500)
+    parser.add_argument(
+        "--source",
+        choices=("auto", "local", "snapshots"),
+        default="auto",
+        help="auto reads merged GCS shards when GCS_BUCKET is set, else local",
+    )
     args = parser.parse_args()
 
     settings = get_settings()
@@ -45,7 +54,15 @@ def main() -> int:
         return 2
 
     baseline = Baseline.load(baseline_path)
-    records = load_recent_queries(settings, limit=args.limit)
+    # Production writes one shard per instance, so a local read would see only
+    # whatever this machine recorded -- which on a laptop is nothing.
+    use_snapshots = args.source == "snapshots" or (
+        args.source == "auto" and bool(settings.gcs_bucket)
+    )
+    if use_snapshots:
+        records = load_snapshot_queries(settings, limit=args.limit)
+    else:
+        records = load_recent_queries(settings, limit=args.limit)
     if not records:
         print(
             "No /query runs recorded yet (or none since the refused metric "

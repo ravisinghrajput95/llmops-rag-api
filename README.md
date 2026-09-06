@@ -427,16 +427,28 @@ the corpus cannot serve — a quality measurement extracted from an unlabelled
 stream.
 
 **Where the data comes from.** Cloud Run's filesystem is a per-instance tmpfs,
-so the MLflow tracking database — the params, metrics and tags this reads —
-used to die on every scale-to-zero, while only artifacts reached GCS. Drift
-detection was therefore blind to production by construction. The tracking DB is
-now snapshotted into the same Always-Free bucket as the Chroma store, restored
-on cold start, and pushed every `MLFLOW_SNAPSHOT_EVERY` runs (25 by default)
+so the MLflow tracking database — the params, metrics and tags this reads — died
+on every scale-to-zero while only artifacts reached GCS. Drift detection was
+blind to production by construction. It is now snapshotted into the same
+Always-Free bucket as the Chroma store, every `MLFLOW_SNAPSHOT_EVERY` runs (25)
 plus once on shutdown. Batching is deliberate: Cloud Storage's free tier allows
-5,000 class A operations a month and a write per query would spend them. The
-cost is bounded and stated — up to that many runs are lost if an instance dies
-between snapshots, which skews nothing when drift is measured over a window of
-tens of queries.
+5,000 class A operations a month and a write per query would spend them.
+
+**One object per instance, not one shared object.** The Chroma snapshot can use
+last-write-wins because ingest is rare. This is written every few dozen queries
+by every instance, so at `max-instances=2` a shared object would have instances
+replacing each other's runs wholesale — losing roughly half of them and keeping
+whichever wrote last. Each process instead writes `snapshots/mlflow/<revision>-<id>.tar.gz`
+and never reads anyone else's; `make drift` merges the shards when it reads.
+Sharding removes the conflict rather than arbitrating it, which is why there is
+no locking here. An instance therefore never restores this file — it owns its
+shard and starts empty, which is exactly what its shard should contain.
+
+Two bounded costs, both stated rather than hidden: up to `MLFLOW_SNAPSHOT_EVERY`
+runs are lost if an instance dies between snapshots, and the bucket's lifecycle
+rule expires shards on the same schedule as artifacts, so drift sees a rolling
+window rather than all history. Neither skews a measurement taken over tens of
+queries.
 
 **Two signals, because one cannot say why.** Rising refusals mean something is
 wrong, not what. The pairing that resolves it comes straight out of the floor
@@ -800,7 +812,7 @@ your card. If you have not upgraded, the failure mode is downtime, not a bill.
 │       ├── spend_guard.py   # daily OpenAI spend ceiling
 │       └── mlflow_tracker.py# fail-open MLflow logging
 ├── evals/                   # golden.jsonl + corpus/, baseline.json, signals.json
-├── tests/                   # 179 tests, OpenAI fully mocked
+├── tests/                   # 185 tests, OpenAI fully mocked
 ├── terraform/               # AR, GCS, Cloud Run, IAM, WIF, budget
 ├── scripts/                 # bootstrap, wif, budget, cost_check, teardown, smoke, lock_prompts
 ├── .github/workflows/       # ci.yml (all branches) + deploy.yml (main)

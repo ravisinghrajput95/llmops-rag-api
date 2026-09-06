@@ -108,14 +108,29 @@ class Settings(BaseSettings):
     # The MLflow tracking DB lives on the same tmpfs and dies with it, which
     # made `make drift` blind to production: artifacts reach GCS but the run
     # metadata the monitor actually reads -- params, metrics, tags -- did not.
-    # Snapshotting it costs one GCS write per `mlflow_snapshot_every` queries
-    # rather than one per query, because Cloud Storage's free tier allows
-    # 5,000 class A operations a month and a per-query write would spend them.
-    # The cost of that batching is honest and bounded: up to that many runs are
-    # lost if an instance dies between snapshots. Drift is measured over a
-    # window of tens of queries, so losing a few skews nothing. 0 disables.
-    mlflow_snapshot_object: str = "snapshots/mlflow.tar.gz"
+    #
+    # Written one object per writing process, under this prefix, rather than to
+    # a single object. The Chroma snapshot can get away with last-write-wins
+    # because ingest is rare; this is written every few dozen queries by every
+    # instance, so at max_instances=2 a shared object would have instances
+    # overwriting each other's runs wholesale -- losing roughly half of them and
+    # keeping whichever wrote last. Sharding removes the conflict rather than
+    # arbitrating it: nobody writes anyone else's object, and the reader merges.
+    #
+    # An instance therefore never restores this: it owns its shard and starts
+    # empty, which is exactly what its shard should contain.
+    mlflow_snapshot_prefix: str = "snapshots/mlflow/"
+    # One GCS write per this many runs rather than one per run, because Cloud
+    # Storage's free tier allows 5,000 class A operations a month and a
+    # per-query write would spend them. The cost is bounded and stated: up to
+    # this many runs are lost if an instance dies between snapshots. Drift is
+    # measured over a window of tens of queries, so losing a few skews nothing.
+    # 0 disables.
     mlflow_snapshot_every: int = 25
+    # How many shards the monitor merges. Every cold start creates one, so this
+    # bounds read cost as they accumulate; the bucket lifecycle rule bounds
+    # storage.
+    mlflow_snapshot_max_shards: int = 50
     # Snapshotting adds a GCS round trip to /ingest (not to /query). Turn off
     # to keep ingest fast and accept ephemeral state.
     snapshot_on_ingest: bool = True

@@ -48,8 +48,9 @@ class MLflowTracker:
         self._lock = threading.Lock()
         self._mlflow: Any = None
         # The tracker owns its own durability: nothing else knows when the
-        # backing file has changed, and a restore has to happen before the
-        # first connection opens it.
+        # backing file has changed. It writes its own shard and never reads
+        # anyone else's -- see `mlflow_snapshot_prefix` for why sharding rather
+        # than a shared object.
         self._snapshots = snapshots or SnapshotStore("", "", enabled=False)
         self._db_dir: Path | None = None
         self._runs_since_snapshot = 0
@@ -79,11 +80,6 @@ class MLflowTracker:
             if db_path.parent and str(db_path.parent) not in ("", "."):
                 db_path.parent.mkdir(parents=True, exist_ok=True)
                 self._db_dir = db_path.parent
-                # Before anything opens the file: SQLAlchemy holds the SQLite
-                # file open from first connection, so restoring afterwards
-                # would be overwritten rather than read.
-                if self._snapshots.enabled:
-                    self._snapshots.restore(str(db_path.parent))
 
         mlflow.set_tracking_uri(uri)
 

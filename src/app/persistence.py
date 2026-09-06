@@ -181,6 +181,29 @@ class SnapshotStore:
             return SnapshotResult(ok=False, detail=f"restore failed: {exc}")
 
 
+def list_snapshot_objects(bucket: str, prefix: str, limit: int = 50) -> list[str]:
+    """Object names under `prefix`, most recently written first. Never raises.
+
+    Used to read a sharded snapshot back: one writer per object means no writer
+    ever overwrites another, and the reader is what puts them back together.
+    """
+    if not bucket:
+        return []
+    try:
+        from google.cloud import storage
+
+        client = storage.Client()
+        blobs = list(client.list_blobs(bucket, prefix=prefix, max_results=limit * 4))
+        blobs.sort(key=lambda b: b.updated or 0, reverse=True)
+        return [b.name for b in blobs[:limit]]
+    except Exception as exc:
+        logger.warning(
+            "could not list snapshots",
+            extra={"bucket": bucket, "prefix": prefix, "error": str(exc)},
+        )
+        return []
+
+
 def _safe_extract(archive: tarfile.TarFile, target: Path) -> None:
     """Extract, refusing any member that would escape `target`.
 

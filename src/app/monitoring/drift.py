@@ -69,6 +69,9 @@ class QueryRecord:
     cost_usd: float = 0.0
     latency_ms: float = 0.0
     prompt_version: str = ""
+    # Epoch millis. Only used to order runs merged from different shards, so
+    # that `limit` still means "the most recent N" across all of them.
+    started_at: float = 0.0
 
 
 @dataclass

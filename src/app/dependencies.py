@@ -7,6 +7,10 @@ importing anything that touches the network.
 from __future__ import annotations
 
 import logging
+import os
+import re
+import uuid
+from functools import lru_cache
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
@@ -23,6 +27,19 @@ from app.tracking.mlflow_tracker import MLflowTracker
 from app.tracking.spend_guard import SpendGuard
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache
+def shard_id() -> str:
+    """A name for this process's snapshot object, stable for its lifetime.
+
+    Random rather than derived from anything Cloud Run exposes: the unit that
+    must not collide is the writing *process*, and no revision or service name
+    is unique per instance. The revision is prefixed anyway, so a shard can be
+    attributed to the deploy that produced it when reading them back.
+    """
+    revision = re.sub(r"[^a-zA-Z0-9_-]", "", os.getenv("K_REVISION", "local"))[:40]
+    return f"{revision or 'local'}-{uuid.uuid4().hex[:8]}"
 
 
 def build_pipeline(settings: Settings) -> RAGPipeline:
@@ -49,11 +66,13 @@ def build_pipeline(settings: Settings) -> RAGPipeline:
         chat_client=OpenAIChatClient(openai_client, settings),
         tracker=MLflowTracker(
             settings,
-            # A separate object from the Chroma snapshot: the two change at
-            # different rates and must not overwrite one another.
+            # One object per process, under its own prefix. Two instances
+            # writing a shared object would overwrite each other's runs
+            # wholesale, and this is written far more often than the Chroma
+            # snapshot that pattern was chosen for.
             snapshots=SnapshotStore(
                 bucket=settings.gcs_bucket,
-                object_name=settings.mlflow_snapshot_object,
+                object_name=f"{settings.mlflow_snapshot_prefix}{shard_id()}.tar.gz",
                 enabled=settings.persistence_enabled,
             ),
         ),
