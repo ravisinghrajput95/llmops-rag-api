@@ -483,6 +483,30 @@ one.
 Windows under 30 queries are reported as insufficient rather than scored,
 because a rate difference over a handful of queries means nothing.
 
+**Observed in production, not only in simulation.** Against the deployed
+service: 32 answerable queries produced a window sitting on the baseline (0%
+refusal, mean top score 0.546 against 0.536, 2.96 chunks against 2.87), and the
+24-query window it could see was correctly reported as too small to score rather
+than scored anyway. A second window of 40 queries carrying 40% near-miss
+contamination was caught:
+
+```
+  refusal rate             20.0%        0.0%
+  ungrounded rate           0.0%        0.0%
+  mean top score           0.533       0.536
+
+  [ALERT] refusal_rate: 20.0% of queries refused against a 0.0% baseline (z=3.64)
+
+  Likely a content gap: questions still look like corpus topics -- they retrieve
+  normally and score normally -- and are being refused anyway.
+```
+
+That is the whole chain closing: the floor research predicted near-miss traffic
+would score *identically* to answerable traffic, the offline characterisation
+said refusal rate would therefore have to carry the detection, and on real
+traffic the similarity distribution did not move (0.533 against 0.536) while
+refusals did, and the diagnosis named the right cause unprompted.
+
 Two honest caveats. Those false-positive figures are a lower bound: the null
 windows are resampled from the same cases the baseline is built from, so they
 are more alike than real traffic would be. And **this detects change, not
