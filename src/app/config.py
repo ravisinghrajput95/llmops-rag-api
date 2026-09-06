@@ -53,14 +53,35 @@ class Settings(BaseSettings):
     top_k: int = 4
     # Chunks scoring below this cosine similarity are dropped before they
     # reach the prompt. Fewer junk chunks == fewer input tokens == less money,
-    # and when everything is dropped the LLM call is skipped entirely.
+    # and when every chunk is dropped the LLM call is skipped entirely.
     #
-    # 0.2 is calibrated from measured text-embedding-3-small scores on this
-    # corpus: a genuinely relevant chunk scored 0.62, a loosely related one
-    # 0.15, and an unrelated question topped out at 0.10. Raise it to be
-    # stingier, lower it if legitimate questions start returning "I don't
-    # know". It is model-dependent -- recalibrate if you change embeddings.
-    min_similarity: float = 0.2
+    # 0.28 is calibrated on measured text-embedding-3-small scores over this
+    # corpus against 61 answerable and 67 out-of-corpus questions. It is the
+    # highest floor that costs nothing: it rejects 20.9% of out-of-corpus
+    # questions against 11.9% at the old 0.2, with an identical answerable
+    # rate on all ten held-out splits. Above ~0.30 answerable questions start
+    # being refused.
+    #
+    # What this floor CANNOT do is reject a question about a topic the corpus
+    # covers whose specific fact it lacks -- "what is Cloud Run's maximum
+    # request timeout?" against a corpus that discusses Cloud Run concurrency
+    # but never states a maximum. Those score identically to answerable
+    # questions (AUC 0.518, i.e. chance), because the retriever is right: the
+    # document IS the relevant one. Similarity measures topical relevance;
+    # refusing needs factual sufficiency, which is a reading judgement the
+    # model makes and geometry cannot. See README "Why the floor stops here".
+    #
+    # Model-dependent -- recalibrate if you change embeddings.
+    min_similarity: float = 0.28
+    # Additionally drop chunks scoring below this fraction of the best chunk's
+    # score. The absolute floor cannot tell a weak match in a strong result set
+    # from a strong match in a weak one, because similarity is not calibrated
+    # across questions; this is, since it rescales per query. Worth having for
+    # cost rather than for refusal: it cuts context from 3.95 to 2.87 chunks
+    # per query -- 27% off the input tokens of every single query -- with no
+    # measured loss of answerable rate. Confirmed end to end: retrieval hit
+    # rate stayed at 100% and cost per eval case fell 30%. 0 disables.
+    min_similarity_ratio: float = 0.60
     max_ingest_chars: int = 200_000
 
     # --- MLflow -----------------------------------------------------------

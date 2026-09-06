@@ -210,7 +210,10 @@ class RAGPipeline:
         query_vector = embedded.vectors[0] if embedded.vectors else []
         hits = (
             self._store.search(
-                query_vector, top_k=k, min_similarity=self._settings.min_similarity
+                query_vector,
+                top_k=k,
+                min_similarity=self._settings.min_similarity,
+                min_similarity_ratio=self._settings.min_similarity_ratio,
             )
             if query_vector
             else []

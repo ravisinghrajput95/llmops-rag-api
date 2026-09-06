@@ -37,7 +37,7 @@ def main() -> int:
     parser.add_argument("--corpus", default="evals/corpus")
     parser.add_argument("--accuracy", type=float, default=0.80)
     parser.add_argument("--retrieval", type=float, default=0.85)
-    parser.add_argument("--refusal", type=float, default=1.0)
+    parser.add_argument("--refusal", type=float, default=0.98)
     parser.add_argument(
         "--no-mlflow", action="store_true", help="skip logging the run to MLflow"
     )

@@ -62,6 +62,20 @@ measurable in `make eval`.
 an arm64 image that fails at startup with an exec format error. The Makefile
 pins `--platform linux/amd64`; keep it.
 
+**The similarity floor cannot reject near-misses, and this is settled.**
+A question on a topic the corpus covers whose specific fact it lacks ("Cloud
+Run's maximum request timeout", against docs that discuss Cloud Run
+concurrency but never state a maximum) scores *identically* to an answerable
+question -- AUC 0.518 against 0.500 chance, measured on real embeddings over
+61 answerable and 67 out-of-corpus questions. Every distributional
+alternative (margin, ratio, z-score, doc concentration) scored worse than
+plain top-1. The retriever is not wrong in these cases: it fetches exactly the
+document a person would. Similarity measures topical relevance; refusal needs
+factual sufficiency. Do not re-litigate this with a cleverer threshold -- the
+model does that job, and README "Why the floor stops here" has the numbers.
+The floor is tuned for what it *can* do: rejecting topically unrelated
+questions, where it separates at AUC 0.927.
+
 **Rate limiter and spend guard are per-process.** With `max-instances=2` the
 effective ceilings are up to 2x configured, and they reset on scale-to-zero.
 This is deliberate — a shared counter needs Redis or Firestore, neither of

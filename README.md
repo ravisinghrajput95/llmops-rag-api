@@ -344,16 +344,28 @@ attempt. The grounded cases deliberately include numeric precision (two
 adjacent figures that are easy to confuse), negation, conditional consequences
 and one cross-document question.
 
-**Latest run** (`make eval`, `gpt-4o-mini`, 2026-09-05 — 68 cases, 22 documents):
+**Latest run** (`make eval`, `gpt-4o-mini`, 2026-09-06 — 128 cases, 22 documents):
 
 | Metric | Result |
 |---|---|
-| accuracy | **100%** (68/68) |
+| accuracy | 96.1% (123/128) |
 | retrieval hit rate | **100%** (60 grounded cases) |
-| refusal accuracy | **100%** (8/8) |
-| citation rate | **100%** |
-| mean / p95 latency | 1,391 ms / 1,742 ms |
-| total cost | $0.006820 |
+| refusal accuracy | 97.1% (66/68) |
+| citation rate | 96.7% |
+| mean / p95 latency | 1,132 ms / 1,723 ms |
+| total cost | $0.008951 |
+
+Accuracy fell from a previous 100% because the set it is measured over got
+much harder: 60 negatives were added, 35 of them near-misses. Cost per case
+fell 30% over the same change ($0.000100 → $0.000070), and no failure was a
+retrieval failure — the hit rate held at 100%.
+
+One of the five failures was a bad case rather than a bad answer.
+`near-temp-value` ("what temperature value should be used for grounded
+answering?") was written as a near-miss, but the corpus does answer it at the
+level of "low values", which is what the model said. It has been relabelled as
+a grounded case, so the next run scores **124/128** with refusal accuracy
+**66/67** over 67 negatives. The numbers above are left as measured.
 
 **Why this 100% means something and the previous one did not.** The corpus was
 three documents — five chunks — against `top_k=4`. Every query retrieved ~80%
@@ -418,6 +430,90 @@ re-measured it — only `make eval` can say whether new wording is better. And
 this versions the prompt, not the model: the same prompt against a new
 `gpt-4o-mini` snapshot is a different system, which is what the `chat_model`
 param is for.
+
+### Why the floor stops here
+
+The similarity floor was rejecting far fewer out-of-corpus questions than
+intended, and raising it cost accuracy. The obvious reading is that the
+threshold needs to be smarter. It does not; it needs to be *smaller in scope*.
+
+**The measurement was flattering.** The rejection rate was computed over eight
+out-of-corpus questions, six of them plainly unrelated (weather, recipes, AWS,
+Azure, Kubernetes, PostgreSQL). Re-measured against 67 negatives — 34 of them
+deliberate near-misses, on topics the corpus covers but whose specific fact it
+lacks — the old floor rejected **11.9%**, not the 38% the small sample showed.
+
+**Relative signals do not help.** The hypothesis was that an out-of-corpus
+question produces a *flat* similarity distribution — nothing standing out —
+so a per-query signal would separate what an absolute cut cannot. Measured on
+real `text-embedding-3-small` scores, every distributional signal was worse
+than plain top-1:
+
+| signal | AUC |
+|---|---|
+| top-1 (absolute) | 0.716 |
+| top-1 − mean(tail) | 0.692 |
+| z-score | 0.668 |
+| top-1 / mean(tail) | 0.557 |
+
+**Because the failure is not distributional.** Splitting the negatives by kind
+shows where every signal dies (0.500 is chance):
+
+| signal | vs. near-miss | vs. far / adjacent / meta / injection |
+|---|---|---|
+| top-1 | **0.518** | 0.927 |
+| top-1 − mean | 0.480 | 0.916 |
+| z-score | 0.499 | 0.848 |
+| distinct docs in top-4 | 0.446 | 0.573 |
+
+Near-miss questions are *indistinguishable from answerable ones* — top-1
+similarity for answerable questions runs 0.328/0.535/0.723 (min/median/max)
+and for near-misses 0.318/0.526/0.723.
+
+The retrievals show why, and it is not a bug. "What is Cloud Run's maximum
+request timeout?" retrieves `cloud-run-scaling` at 0.531. "How much does Secret
+Manager charge beyond the free allowance?" retrieves `secret-manager` at 0.687.
+**The retriever is right every time** — it fetches exactly the document a person
+would reach for. That document simply never states the fact.
+
+Embedding similarity measures *topical relevance*. Refusing requires *factual
+sufficiency*. They are different properties, and no threshold on the first
+recovers the second. So the model doing most of the refusing is not a defect to
+engineer away: deciding "this passage is about Cloud Run concurrency but does
+not state a maximum" is a reading judgement, and geometry does not make it.
+
+**What the floor was retuned to do** is the job it is good at — cheap rejection
+of topically unrelated questions, where it separates at 0.927. Paired against
+the old configuration on ten held-out splits:
+
+| | answerable | rejected | chunks/query |
+|---|---|---|---|
+| `min_similarity=0.20` | 97.7% | 11.2% | 3.97 |
+| `0.28` + `min_similarity_ratio=0.60` | 97.7% | **20.6%** | **2.88** |
+
+The answerable-rate difference was exactly 0.000 on all ten splits — strictly
+dominant, never worse. The ratio is the more useful half and it is a *cost*
+lever, not a refusal one: it drops chunks scoring below 60% of the best hit,
+because the same 0.45 chunk is padding beside a 0.80 hit and the best evidence
+available beside a 0.50 one. No absolute threshold can treat those differently.
+
+Confirmed end to end on 128 cases against real `gpt-4o-mini`: retrieval hit
+rate stayed at **100%**, and cost per case fell **30%** ($0.000100 → $0.000070).
+
+**What the model actually does with the questions the floor cannot catch.**
+This is the part the division of labour rests on, so it was measured rather
+than assumed: 66 of 67 out-of-corpus questions refused, including 33 of 34
+near-misses, and 33 of 33 unrelated ones. The single failure is worth reading
+in full, because it is the shape of the whole problem:
+
+> **Q:** What is the highest concurrency value Cloud Run accepts?
+> **A:** The highest concurrency value Cloud Run accepts is eighty, as stated
+> in passage [1].
+
+The corpus says concurrency *defaults* to eighty and never states a maximum.
+The retrieved passage is the correct one; the model read a default as a limit.
+No similarity threshold would have prevented this, because the passage it
+misread is the passage it should have been given.
 
 ### Parameter sweeps
 
