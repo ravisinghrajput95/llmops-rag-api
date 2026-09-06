@@ -262,3 +262,51 @@ class TestRegressionGate:
     # unrelated text, so asserting refusal here would measure the fake rather
     # than the system. scripts/run_eval.py measures it against the real model,
     # where the similarity floor and the refusal instruction both apply.
+
+
+class TestMonitoringBaseline:
+    """The reference `make drift` compares production against.
+
+    Run through the real eval harness with fakes, because the bug this guards
+    is a wiring one: the baseline must describe answerable traffic only. No
+    similarity value is asserted -- the bag-of-words fake cannot support that.
+    """
+
+    def test_baseline_covers_only_the_answerable_cases(self, pipeline, tmp_path) -> None:
+        from app.evaluation.runner import write_baseline
+        from app.monitoring.drift import Baseline
+
+        ingest_corpus(pipeline, CORPUS_DIR)
+        cases = load_golden_set(GOLDEN_PATH)
+        summary, _ = run_evaluation(pipeline, cases, log_to_mlflow=False)
+        path = tmp_path / "baseline.json"
+
+        baseline = write_baseline(
+            path, cases, summary, pipeline._settings, pipeline.prompt_info()
+        )
+
+        answerable = [c for c in cases if not c.is_refusal_case]
+        assert baseline.n == len(answerable)
+        assert baseline.n < len(cases), "the out-of-corpus half must be excluded"
+        assert len(baseline.similarities) == baseline.n
+        assert Baseline.load(path) == baseline
+
+    def test_baseline_records_the_config_it_was_measured_under(
+        self, pipeline, tmp_path
+    ) -> None:
+        """A baseline that does not say what produced it cannot be trusted
+        later, because the retrieval settings are exactly what it describes."""
+        from app.evaluation.runner import write_baseline
+
+        ingest_corpus(pipeline, CORPUS_DIR)
+        cases = load_golden_set(GOLDEN_PATH)
+        summary, _ = run_evaluation(pipeline, cases, log_to_mlflow=False)
+
+        baseline = write_baseline(
+            tmp_path / "b.json", cases, summary, pipeline._settings, pipeline.prompt_info()
+        )
+
+        assert baseline.min_similarity == pipeline._settings.min_similarity
+        assert baseline.min_similarity_ratio == pipeline._settings.min_similarity_ratio
+        assert baseline.prompt_fingerprint
+        assert str(len(cases)) in baseline.source

@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from app.evaluation.dataset import GoldenCase, load_cases
 from app.evaluation.metrics import CaseScore, EvalSummary, score_case, summarise
+from app.monitoring.drift import Baseline
 from app.tracking.mlflow_tracker import RunPayload
 
 logger = logging.getLogger(__name__)
@@ -166,6 +168,40 @@ def _log_summary(pipeline, summary: EvalSummary, breaches: list[str]) -> None:
             },
         ),
     )
+
+
+def write_baseline(
+    path: str | Path,
+    cases: list[GoldenCase],
+    summary: EvalSummary,
+    settings,
+    prompts: dict,
+) -> Baseline:
+    """Record this run as the reference for production drift checks.
+
+    Only the answerable cases go in. The golden set is about half out-of-corpus
+    by construction, so its overall refusal rate describes the test set rather
+    than healthy traffic -- baking it in would make every real window look
+    better than baseline and hide exactly the drift this is meant to catch.
+    """
+    grounded = {case.id for case in cases if not case.is_refusal_case}
+    answerable = [score for score in summary.scores if score.case_id in grounded]
+    baseline = Baseline.from_eval(
+        answerable,
+        settings,
+        prompts,
+        source=f"{len(cases)} cases, {settings.chat_model}, {date.today()}",
+    )
+    baseline.save(path)
+    logger.info(
+        "monitoring baseline written",
+        extra={
+            "path": str(path),
+            "answerable_cases": baseline.n,
+            "refusal_rate": baseline.refusal_rate,
+        },
+    )
+    return baseline
 
 
 def format_report(summary: EvalSummary, breaches: list[str]) -> str:

@@ -756,7 +756,7 @@ your card. If you have not upgraded, the failure mode is downtime, not a bill.
 │       ├── spend_guard.py   # daily OpenAI spend ceiling
 │       └── mlflow_tracker.py# fail-open MLflow logging
 ├── evals/                   # golden.jsonl + corpus/, baseline.json, signals.json
-├── tests/                   # 172 tests, OpenAI fully mocked
+├── tests/                   # 174 tests, OpenAI fully mocked
 ├── terraform/               # AR, GCS, Cloud Run, IAM, WIF, budget
 ├── scripts/                 # bootstrap, wif, budget, cost_check, teardown, smoke, lock_prompts
 ├── .github/workflows/       # ci.yml (all branches) + deploy.yml (main)

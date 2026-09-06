@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -28,9 +27,9 @@ from app.evaluation.runner import (  # noqa: E402
     ingest_corpus,
     load_golden_set,
     run_evaluation,
+    write_baseline,
 )
 from app.logging_config import configure_logging  # noqa: E402
-from app.monitoring.drift import Baseline  # noqa: E402
 
 
 def main() -> int:
@@ -84,15 +83,7 @@ def main() -> int:
     # just measured, and a stale one silently compares production against a
     # setup that no longer exists. Git is where you see it change.
     if not args.no_baseline:
-        grounded_ids = {c.id for c in cases if not c.is_refusal_case}
-        answerable = [s for s in summary.scores if s.case_id in grounded_ids]
-        baseline = Baseline.from_eval(
-            answerable,
-            settings,
-            prompts,
-            source=f"{len(cases)} cases, {settings.chat_model}, {date.today()}",
-        )
-        baseline.save(args.baseline)
+        baseline = write_baseline(args.baseline, cases, summary, settings, prompts)
         print(
             f"Monitoring baseline written to {args.baseline} "
             f"({baseline.n} answerable cases, refusal {baseline.refusal_rate:.1%})"
