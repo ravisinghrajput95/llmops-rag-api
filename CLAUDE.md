@@ -20,6 +20,7 @@ make fmt      # auto-fix
 make run      # uvicorn on :8080
 make eval     # SPENDS ~$0.002 against real OpenAI -- never run unprompted
 make prompts-lock VERSION=v2   # re-pin the prompt lock after editing a prompt
+make drift    # compare recent traffic to the eval baseline (free, reads MLflow)
 ```
 
 Tests need no API key and no GCP credentials. If a change makes them require
@@ -118,6 +119,21 @@ conversation.
   Prompts substitute with `string.Template` (`$context`), not `str.format`, and
   their placeholders are declared in `TEMPLATE_PLACEHOLDERS`; changing one
   without the other fails at import, by design.
+
+## Monitoring
+
+- `evals/baseline.json` is the reference for `make drift`, and `make eval`
+  rewrites it every run. It is built from the **answerable cases only** — the
+  golden set is about half out-of-corpus by construction, so its overall
+  refusal rate is a property of the test set, not of healthy traffic. Passing
+  the whole set would make every real window look better than baseline.
+- `evals/signals.json` is a committed fixture: the measured retrieval signal
+  and the real refusal outcome for all 128 golden questions. It exists so
+  `scripts/validate_drift.py` can characterise the detector for free. Regenerate
+  it when the corpus, the retrieval config or the embedding model changes.
+- Runs recorded before the `refused` metric existed are skipped, not defaulted.
+  Defaulting them to "not refused" would read a window of old traffic as a
+  perfect zero refusal rate.
 
 ## Deploying
 

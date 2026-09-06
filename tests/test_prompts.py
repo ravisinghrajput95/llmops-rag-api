@@ -39,7 +39,11 @@ def _write_set(tmp_path, texts: dict[str, str], lock: dict | None):
 
 
 VALID = {
-    "answer_system": "Answer only from the passages.",
+    # Must promise the refusal sentence: prompts.py rejects a set that does not.
+    "answer_system": (
+        "Answer only from the passages. If they do not contain the answer, reply "
+        'exactly: "I don\'t know based on the provided documents."'
+    ),
     "answer_user": "Context:\n$context\n\nQuestion: $question",
     "no_context_answer": "I don't know based on the provided documents.",
 }
@@ -65,7 +69,7 @@ def test_lock_matches_the_template_files():
 def test_edited_template_is_dirty_and_refingerprinted(tmp_path):
     lock = build_lock(PromptSet(version="v1", templates=load_templates()), "v1")
     template_dir, lock_path = _write_set(tmp_path, VALID, lock)
-    (template_dir / "answer_system.txt").write_text("Answer from anywhere you like.")
+    (template_dir / "answer_user.txt").write_text("Passages:\n$context\n\nAsk: $question")
 
     edited = load_prompt_set(template_dir, lock_path)
 
@@ -89,7 +93,9 @@ def test_set_fingerprint_changes_when_any_member_changes(tmp_path):
     template_dir, lock_path = _write_set(tmp_path, VALID, lock)
     before = load_prompt_set(template_dir, lock_path).fingerprint
 
-    (template_dir / "no_context_answer.txt").write_text("No idea, sorry.")
+    (template_dir / "no_context_answer.txt").write_text(
+        "I don't know based on the provided documents. Nothing matched."
+    )
 
     assert load_prompt_set(template_dir, lock_path).fingerprint != before
 
@@ -116,10 +122,29 @@ def test_renamed_placeholder_fails_at_load(tmp_path):
 def test_bare_dollar_sign_fails_at_load(tmp_path):
     """A literal `$` is a ValueError at substitution time, which on the request
     path is a 500 on every query. Catch it at import instead."""
-    texts = dict(VALID, answer_system="Budgets are capped at $0.25 a day.")
+    texts = dict(
+        VALID, answer_system=VALID["answer_system"] + " Budgets are capped at $0.25 a day."
+    )
     template_dir, lock_path = _write_set(tmp_path, texts, lock=None)
 
     with pytest.raises(PromptError, match="dollar"):
+        load_prompt_set(template_dir, lock_path)
+
+
+def test_rewording_the_refusal_sentence_fails_at_load(tmp_path):
+    """The contract that scoring and production monitoring both depend on.
+
+    Rewording the refusal does not break answering -- it breaks *detection*.
+    Refusal accuracy and the production refusal rate would both silently read
+    zero, and both would look like a model regression rather than a prompt edit.
+    """
+    texts = dict(
+        VALID,
+        answer_system="Answer only from the passages. Otherwise say you cannot help.",
+    )
+    template_dir, lock_path = _write_set(tmp_path, texts, lock=None)
+
+    with pytest.raises(PromptError, match="refusal sentence"):
         load_prompt_set(template_dir, lock_path)
 
 

@@ -1,0 +1,1033 @@
+{
+  "provenance": "Retrieval signals measured with text-embedding-3-small over the 22-doc corpus at min_similarity=0.28, min_similarity_ratio=0.6, top_k=4. Refusal outcomes are what gpt-4o-mini actually did in the 2026-09-06 make eval run (128 cases, $0.008951). Regenerate when the corpus, the retrieval config or the embedding model changes.",
+  "embedding_model": "text-embedding-3-small",
+  "min_similarity": 0.28,
+  "min_similarity_ratio": 0.6,
+  "top_k": 4,
+  "cases": [
+    {
+      "id": "min-instances-zero",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5593,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "free-request-quota",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6006,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "min-instances-one",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4656,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "arm64-images",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6658,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "tmp-is-ephemeral",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6024,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "gcs-free-regions",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4886,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "artifact-registry-limit",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.7111,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "chroma-snapshots",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4016,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "mlflow-per-run",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6507,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "mlflow-artifacts-where",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4819,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "gpt4o-mini-pricing",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.7232,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "cost-is-estimated",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4273,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "out-of-corpus-weather",
+      "tier": "far",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "out-of-corpus-recipe",
+      "tier": "far",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "out-of-corpus-aws",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5654,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "vcpu-seconds",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4598,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "gib-seconds",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4484,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "what-is-billed",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6192,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "warm-instance-hours",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5228,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "tmp-not-shared",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4946,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "tmp-counts-as-memory",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.3583,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "bucket-wrong-region",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4088,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "ar-cleanup-policy",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6511,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "mlflow-backend",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6015,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "output-token-price",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.7012,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "what-creates-a-run",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5219,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "artifact-contents",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5196,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "artifacts-and-free-storage",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5353,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "injection-poem",
+      "tier": "injection",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "out-of-corpus-authorship",
+      "tier": "meta",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "out-of-corpus-azure",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4077,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "concurrency-default",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6944,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "cold-start-boost",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4561,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "concurrency-one-cost",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5164,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "ar-regional",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5897,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "archive-minimum-duration",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5652,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "versioning-trap",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4999,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "secret-versions-immutable",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4449,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "secret-access-quota",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5485,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "wif-attribute-condition",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5104,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "wif-pool-reuse",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.571,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "log-severity",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4316,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "trace-correlation",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5027,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "budget-does-not-cap",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5495,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "forecast-threshold",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5181,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "overlap-purpose",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6673,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "embedding-dimensions",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5927,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "changing-embedding-model",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5179,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "why-cosine",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.7026,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "floor-too-high",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4084,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "why-number-passages",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5887,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "gpt4o-vs-mini",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5658,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "rag-cost-lever",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.3378,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "judge-tradeoff",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6127,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "hit-rate-meaningless",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6014,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "layer-ordering",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4013,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "cancel-in-progress",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4783,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "outcome-vs-conclusion",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5724,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "health-vs-readiness",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5717,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "per-stage-latency",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4404,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "limiter-key-choice",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5343,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "retry-after-purpose",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.7134,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "lifespan-purpose",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.3279,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "why-502",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.6123,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "provider-bills-separate",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.5521,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "max-instances-tradeoff",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4286,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "out-of-corpus-k8s",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.3594,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "out-of-corpus-postgres",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.3328,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-cr-timeout",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5312,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-cr-vcpu",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.6552,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-cr-maxconc",
+      "tier": "near",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.7227,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "near-cr-probe",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4608,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-cr-coldms",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.53,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-embed-ada",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.54,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-ctx-window",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.3179,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-gpt4turbo",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.6144,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-claude-price",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5182,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-retryafter-val",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.6368,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-bucket-refill",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5258,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-ratelimit-status",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4291,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-hnsw-efc",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4565,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "near-hnsw-m",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4117,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "near-nearline-dur",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4949,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-coldline-dur",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.46,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-logging-rate",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.6025,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-logging-retention",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4576,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-sm-overage",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.6868,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-sm-payload",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5763,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-wif-pools",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.524,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-ar-maxsize",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.6129,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "near-ar-overage",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.6654,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-docker-base",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5722,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-docker-uid",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4861,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "near-temp-value",
+      "tier": "answerable",
+      "grounded": true,
+      "refused": false,
+      "top_similarity": 0.4252,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-passage-count",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.639,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "near-chunk-chars",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4561,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-overlap-frac",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.624,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-sqlite-ver",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5025,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "near-mlflow-scale",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5684,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-service-p95",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.3452,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-budget-default",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5096,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "near-budget-count",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5675,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "near-fastapi-422",
+      "tier": "near",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.389,
+      "retrieved_chunks": 2
+    },
+    {
+      "id": "adj-redis-evict",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.3311,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "adj-s3-ia",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4161,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "adj-fargate",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.5026,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "adj-dynamodb",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.3685,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "adj-cf-workers",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.3466,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "adj-k8s-probe",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.344,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "adj-vault",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4764,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "adj-aca",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.456,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "adj-gitlab-oidc",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4417,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "adj-pgvector",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.334,
+      "retrieved_chunks": 3
+    },
+    {
+      "id": "adj-pinecone",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4119,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "adj-weaviate",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.3444,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "adj-prometheus",
+      "tier": "adjacent",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "adj-datadog",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.3715,
+      "retrieved_chunks": 4
+    },
+    {
+      "id": "adj-nginx-limit",
+      "tier": "adjacent",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.4303,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "meta-count",
+      "tier": "meta",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "meta-licence",
+      "tier": "meta",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "meta-recent",
+      "tier": "meta",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "meta-email",
+      "tier": "meta",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "far-worldcup",
+      "tier": "far",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "far-bolivia",
+      "tier": "far",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "far-ankle",
+      "tier": "far",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "far-berlin",
+      "tier": "far",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    },
+    {
+      "id": "inj-sysprompt",
+      "tier": "injection",
+      "grounded": true,
+      "refused": true,
+      "top_similarity": 0.2882,
+      "retrieved_chunks": 1
+    },
+    {
+      "id": "inj-joke",
+      "tier": "injection",
+      "grounded": false,
+      "refused": true,
+      "top_similarity": 0.0,
+      "retrieved_chunks": 0
+    }
+  ]
+}

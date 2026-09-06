@@ -383,6 +383,59 @@ retrieval discriminates between two documents that both discuss cost.
 `tests/test_evaluation.py` enforces this property directly: a test fails if
 the corpus ever shrinks back toward the retrieval depth.
 
+### Production monitoring
+
+The eval measures accuracy against a golden set. Production cannot: nobody
+labels a real question, so there is no accuracy number to watch. `make drift`
+compares recent traffic against the conditions quality was last measured under.
+It reads MLflow, calls no model, and spends nothing.
+
+**The signal that makes it possible.** `refused` is now recorded on every
+query, and the eval established what a refusal means: the model refused 66 of
+67 out-of-corpus questions and only 2 of 61 answerable ones. A refusal is
+therefore a reasonably calibrated statement that the corpus could not answer
+that question, and the refusal rate over a window estimates how much traffic
+the corpus cannot serve — a quality measurement extracted from an unlabelled
+stream.
+
+**Two signals, because one cannot say why.** Rising refusals mean something is
+wrong, not what. The pairing that resolves it comes straight out of the floor
+research above: near-miss questions score *identically* to answerable ones and
+are never rejected by the floor, while off-topic questions are.
+
+| refusals | rejections by the floor | diagnosis |
+|---|---|---|
+| up | unchanged | content gap — the corpus lacks the fact, not the topic |
+| up | up | traffic has moved off-topic |
+| up | chunks/query down | retrieval or its config regressed |
+| unchanged | — | corpus or embedding model changed |
+
+The first calls for writing a document and the third for fixing a bug, so
+reporting only "drift detected" would leave the useful part unsaid.
+
+**Characterised, not assumed.** `scripts/validate_drift.py` resamples
+`evals/signals.json` — the measured retrieval signal and the real `gpt-4o-mini`
+refusal outcome for all 128 golden questions — and is free to re-run:
+
+| window of 100 | 5% contamination | 10% | 20% |
+|---|---|---|---|
+| near-miss detected | 1.8% | 53.6% | **100%** |
+| off-topic detected | 2.2% | 64.0% | **100%** |
+
+False positives on clean traffic are 0–1% at every window size, and the named
+diagnosis is right 100% of the time for near-miss drift and 99% for off-topic.
+Windows under 30 queries are reported as insufficient rather than scored,
+because a rate difference over a handful of queries means nothing.
+
+Two honest caveats. Those false-positive figures are a lower bound: the null
+windows are resampled from the same cases the baseline is built from, so they
+are more alike than real traffic would be. And **this detects change, not
+badness** — traffic legitimately moving to new topics looks exactly like
+traffic degrading, because without labels those *are* the same observation. A
+finding is a prompt to go and read the questions, not a verdict. Nothing here
+can see a fluent, confident, wrong answer: it arrives with the same similarity
+scores as a right one.
+
 ### Prompt versioning
 
 The prompts were string constants inside `pipeline.py`, which made them
@@ -691,6 +744,9 @@ your card. If you have not upgraded, the failure mode is downtime, not a bill.
 │   │   ├── prompts.py       # content-addressed prompts + lock file
 │   │   ├── prompt_templates/# the prompt text itself, one file each
 │   │   └── pipeline.py      # ingest + query orchestration, instrumented
+│   ├── monitoring/
+│   │   ├── drift.py         # unlabelled quality signals vs. the eval baseline
+│   │   └── source.py        # reads recorded /query runs back out of MLflow
 │   ├── evaluation/
 │   │   ├── dataset.py       # golden-set JSONL loader
 │   │   ├── metrics.py       # retrieval/refusal/citation scoring
@@ -699,8 +755,8 @@ your card. If you have not upgraded, the failure mode is downtime, not a bill.
 │       ├── cost.py          # token → USD/INR, unit-tested
 │       ├── spend_guard.py   # daily OpenAI spend ceiling
 │       └── mlflow_tracker.py# fail-open MLflow logging
-├── evals/                   # golden.jsonl + corpus/ for the quality gate
-├── tests/                   # 150 tests, OpenAI fully mocked
+├── evals/                   # golden.jsonl + corpus/, baseline.json, signals.json
+├── tests/                   # 172 tests, OpenAI fully mocked
 ├── terraform/               # AR, GCS, Cloud Run, IAM, WIF, budget
 ├── scripts/                 # bootstrap, wif, budget, cost_check, teardown, smoke, lock_prompts
 ├── .github/workflows/       # ci.yml (all branches) + deploy.yml (main)

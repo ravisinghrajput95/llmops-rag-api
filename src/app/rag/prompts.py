@@ -41,6 +41,15 @@ from string import Template
 
 logger = logging.getLogger(__name__)
 
+# The sentence the system prompt dictates for a refusal, and the opening of
+# the canned no-context reply. It lives here because it is a property of the
+# prompt contract, not of any one consumer: the pipeline uses it to record
+# whether a request was refused, and the eval uses it to score refusal
+# accuracy. Both were previously reading their own copy of the same string.
+# Matched as a phrase rather than a whole sentence, so trailing punctuation or
+# added detail does not break detection.
+REFUSAL_MARKER = "i don't know based on the provided documents"
+
 TEMPLATE_DIR = Path(__file__).parent / "prompt_templates"
 LOCK_PATH = Path(__file__).parent / "prompts.lock.json"
 
@@ -185,9 +194,21 @@ def load_prompt_set(
     return PromptSet(version=version, templates=templates, locked=locked)
 
 
+# Templates whose text must contain REFUSAL_MARKER. Enforced at load because
+# a prompt edit that rewords the refusal sentence does not break answering --
+# it breaks *detection*, silently. Refusal accuracy would read 0%, production
+# refusal rate would read 0%, and both would look like a model regression.
+MUST_PROMISE_REFUSAL = ("answer_system", "no_context_answer")
+
+
 def _validate(name: str, text: str, placeholders: tuple[str, ...]) -> None:
     if not text:
         raise PromptError(f"prompt template {name!r} is empty")
+    if name in MUST_PROMISE_REFUSAL and REFUSAL_MARKER not in text.lower():
+        raise PromptError(
+            f"prompt template {name!r} no longer contains the refusal sentence "
+            f"{REFUSAL_MARKER!r}; refusal detection would silently read zero"
+        )
     template = Template(text)
     if not template.is_valid():
         # A bare `$` -- in a price, say -- is a ValueError at substitution

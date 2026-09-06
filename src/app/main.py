@@ -335,5 +335,6 @@ def query(
         generation_ms=result.generation_ms,
         estimated_cost_usd=result.cost_usd,
         estimated_cost_inr=result.cost_inr,
+        refused=result.refused,
         mlflow_run_id=result.mlflow_run_id,
     )

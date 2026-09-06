@@ -18,11 +18,12 @@ import re
 from dataclasses import dataclass
 
 from app.evaluation.dataset import GoldenCase
+from app.rag import prompts
 
-# The exact sentence the system prompt tells the model to use when the context
-# does not answer the question. Matching the phrase rather than the whole
-# sentence keeps this robust to trailing punctuation and added detail.
-REFUSAL_MARKER = "i don't know based on the provided documents"
+# Re-exported: the prompt contract owns this sentence, and prompts.py fails at
+# load if a template stops promising it. Scoring and the production refusal
+# metric now read the same string rather than each keeping a copy.
+REFUSAL_MARKER = prompts.REFUSAL_MARKER
 
 _CITATION = re.compile(r"\[\d+\]")
 
@@ -45,6 +46,10 @@ class CaseScore:
     latency_ms: float
     cost_usd: float
     retrieved_docs: list[str]
+    # Carried so an eval run can double as the reference distribution for
+    # production monitoring; see monitoring/drift.py.
+    top_similarity: float = 0.0
+    retrieved_chunks: int = 0
     failure_reason: str = ""
 
 
@@ -120,6 +125,10 @@ def score_case(case: GoldenCase, result) -> CaseScore:
         latency_ms=float(getattr(result, "latency_ms", 0.0)),
         cost_usd=float(getattr(result, "cost_usd", 0.0)),
         retrieved_docs=retrieved,
+        top_similarity=(
+            float(getattr(result.sources[0], "similarity", 0.0)) if result.sources else 0.0
+        ),
+        retrieved_chunks=len(result.sources),
         failure_reason=failure_reason,
     )
 

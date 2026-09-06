@@ -8,7 +8,7 @@ IMAGE       ?= llmops-rag-api
 REGION      ?= us-central1
 SERVICE     ?= llmops-rag-api
 
-.PHONY: help venv install test lint fmt run docker-build docker-run clean deploy destroy cost-check eval sweep prompts-lock
+.PHONY: help venv install test lint fmt run docker-build docker-run clean deploy destroy cost-check eval sweep prompts-lock drift
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -36,6 +36,11 @@ prompts-lock: ## Re-pin the prompt lock after editing a template (VERSION=v2)
 	# Free. Bump VERSION whenever the text changes -- that string is how an
 	# MLflow run months from now says which words produced it.
 	$(PYTHON) scripts/lock_prompts.py --version $(VERSION)
+
+drift: ## Compare recent production traffic against the eval baseline (free)
+	# Reads MLflow only -- no model calls, no spend. Needs a baseline from
+	# `make eval` and some recorded /query traffic to compare against.
+	$(PYTHON) scripts/check_drift.py
 
 lint: ## Lint and check formatting
 	.venv/bin/ruff check src tests

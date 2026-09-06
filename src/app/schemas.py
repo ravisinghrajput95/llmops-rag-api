@@ -69,6 +69,11 @@ class QueryResponse(BaseModel):
     generation_ms: float
     estimated_cost_usd: float
     estimated_cost_inr: float
+    # True when the answer declined to answer, whether because retrieval found
+    # nothing or because the model judged the context insufficient. Exposed so
+    # a caller can distinguish "no answer" from "an answer" without string
+    # matching on the prose.
+    refused: bool = False
     mlflow_run_id: str | None = None
 
 

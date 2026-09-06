@@ -14,7 +14,7 @@ from app.config import Settings
 from app.llm.openai_client import ChatClient, EmbeddingClient
 from app.persistence import SnapshotStore
 from app.rag.chunking import Chunk, chunk_document, content_hash
-from app.rag.prompts import PROMPTS, PromptSet
+from app.rag.prompts import PROMPTS, REFUSAL_MARKER, PromptSet
 from app.rag.vectorstore import ChromaVectorStore, RetrievedChunk
 from app.tracking.cost import estimate_cost_usd, usd_to_inr
 from app.tracking.mlflow_tracker import MLflowTracker, RunPayload
@@ -47,6 +47,13 @@ class QueryResult:
     generation_ms: float = 0.0
     cost_usd: float = 0.0
     cost_inr: float = 0.0
+    # Whether the answer declined to answer -- either because retrieval found
+    # nothing, or because the model read the context and judged it insufficient.
+    # Recorded because on live traffic it is the only quality signal available:
+    # there are no labels, and the eval measured the model refusing 66 of 67
+    # out-of-corpus questions, which makes this a calibrated estimator of how
+    # much traffic the corpus cannot answer. See monitoring/drift.py.
+    refused: bool = False
     mlflow_run_id: str | None = None
 
 
@@ -236,6 +243,7 @@ class RAGPipeline:
             outcome = QueryResult(
                 answer=self._prompts["no_context_answer"].text,
                 sources=[],
+                refused=True,
                 model=settings.chat_model,
                 embedding_tokens=embedding_tokens,
                 retrieval_ms=round(retrieval_ms, 2),
@@ -273,6 +281,7 @@ class RAGPipeline:
         outcome = QueryResult(
             answer=completion.text,
             sources=hits,
+            refused=REFUSAL_MARKER in (completion.text or "").lower(),
             model=completion.model,
             prompt_tokens=completion.prompt_tokens,
             completion_tokens=completion.completion_tokens,
@@ -297,6 +306,7 @@ class RAGPipeline:
                 "latency_ms": outcome.latency_ms,
                 "retrieval_ms": outcome.retrieval_ms,
                 "generation_ms": outcome.generation_ms,
+                "refused": outcome.refused,
             },
         )
 
@@ -336,11 +346,13 @@ class RAGPipeline:
                 "estimated_cost_inr": outcome.cost_inr,
                 "retrieved_chunks": float(len(outcome.sources)),
                 "top_similarity": outcome.sources[0].similarity if outcome.sources else 0.0,
+                "refused": float(outcome.refused),
             },
             tags={
                 "endpoint": "/query",
                 "stage": "query",
                 "grounded": str(hit).lower(),
+                "refused": str(outcome.refused).lower(),
             },
             artifacts={
                 "question.txt": question,
