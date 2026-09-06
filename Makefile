@@ -8,7 +8,7 @@ IMAGE       ?= llmops-rag-api
 REGION      ?= us-central1
 SERVICE     ?= llmops-rag-api
 
-.PHONY: help venv install test lint fmt run docker-build docker-run clean deploy destroy cost-check eval sweep
+.PHONY: help venv install test lint fmt run docker-build docker-run clean deploy destroy cost-check eval sweep prompts-lock
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -31,6 +31,11 @@ sweep: ## Sweep retrieval parameters and compare in MLflow (~$0.002)
 	# Retrieval only -- no generation -- so a whole grid costs a fraction of
 	# a cent. Confirm any winner with `make eval` before adopting it.
 	$(PYTHON) scripts/run_sweep.py
+
+prompts-lock: ## Re-pin the prompt lock after editing a template (VERSION=v2)
+	# Free. Bump VERSION whenever the text changes -- that string is how an
+	# MLflow run months from now says which words produced it.
+	$(PYTHON) scripts/lock_prompts.py --version $(VERSION)
 
 lint: ## Lint and check formatting
 	.venv/bin/ruff check src tests

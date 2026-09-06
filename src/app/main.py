@@ -218,6 +218,7 @@ def ready(
         openai_configured=bool(settings.openai_api_key),
         spend=pipeline.spend_info(),
         persistence=pipeline.persistence_info(),
+        prompts=pipeline.prompt_info(),
     )
 
 

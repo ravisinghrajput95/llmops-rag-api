@@ -56,7 +56,9 @@ def main() -> int:
     print(f"Ingesting {args.corpus} ...")
     ingested = ingest_corpus(pipeline, args.corpus)
     print(f"  {ingested.chunk_count} chunks indexed")
+    prompts = pipeline.prompt_info()
     print(f"Running {len(cases)} cases against {settings.chat_model} ...")
+    print(f"  prompts {prompts['version']} ({prompts['fingerprint']})")
 
     summary, breaches = run_evaluation(
         pipeline,

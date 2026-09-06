@@ -14,32 +14,13 @@ from app.config import Settings
 from app.llm.openai_client import ChatClient, EmbeddingClient
 from app.persistence import SnapshotStore
 from app.rag.chunking import Chunk, chunk_document, content_hash
+from app.rag.prompts import PROMPTS, PromptSet
 from app.rag.vectorstore import ChromaVectorStore, RetrievedChunk
 from app.tracking.cost import estimate_cost_usd, usd_to_inr
 from app.tracking.mlflow_tracker import MLflowTracker, RunPayload
 from app.tracking.spend_guard import SpendGuard
 
 logger = logging.getLogger(__name__)
-
-SYSTEM_PROMPT = (
-    "You are a precise assistant answering questions about a private document "
-    "collection. Use ONLY the numbered context passages provided. If the answer "
-    "is not contained in them, reply exactly: \"I don't know based on the "
-    'provided documents." Cite the passages you used as [1], [2] and so on. '
-    "Be concise."
-)
-
-USER_PROMPT_TEMPLATE = """Context passages:
-{context}
-
-Question: {question}
-
-Answer (cite passages as [n]):"""
-
-NO_CONTEXT_ANSWER = (
-    "I don't know based on the provided documents. "
-    "Nothing has been ingested yet, or nothing matched this question."
-)
 
 
 @dataclass
@@ -83,12 +64,16 @@ class RAGPipeline:
         tracker: MLflowTracker,
         spend_guard: SpendGuard | None = None,
         snapshots: SnapshotStore | None = None,
+        prompts: PromptSet | None = None,
     ) -> None:
         self._settings = settings
         self._store = store
         self._embeddings = embedding_client
         self._chat = chat_client
         self._tracker = tracker
+        # Injectable so that a future eval can run two prompt versions against
+        # the same corpus and compare them; the default is what ships.
+        self._prompts = prompts or PROMPTS
         # Default to a disabled guard so every existing caller (and every
         # test) keeps working without knowing budgets exist.
         self._spend = spend_guard or SpendGuard(budget_usd=0.0)
@@ -103,6 +88,9 @@ class RAGPipeline:
 
     def persistence_info(self) -> dict:
         return {"enabled": self._snapshots.enabled, "uri": self._snapshots.uri}
+
+    def prompt_info(self) -> dict:
+        return self._prompts.describe()
 
     def spend_info(self) -> dict:
         snap = self._spend.snapshot()
@@ -243,7 +231,7 @@ class RAGPipeline:
         #    No context means no useful answer, so paying for tokens is waste.
         if not hits:
             outcome = QueryResult(
-                answer=NO_CONTEXT_ANSWER,
+                answer=self._prompts["no_context_answer"].text,
                 sources=[],
                 model=settings.chat_model,
                 embedding_tokens=embedding_tokens,
@@ -264,10 +252,10 @@ class RAGPipeline:
 
         # 3. Generate.
         context = build_context(hits)
-        user_prompt = USER_PROMPT_TEMPLATE.format(context=context, question=question)
+        user_prompt = self._prompts.render("answer_user", context=context, question=question)
 
         generation_started = time.perf_counter()
-        completion = self._chat.complete(SYSTEM_PROMPT, user_prompt)
+        completion = self._chat.complete(self._prompts["answer_system"].text, user_prompt)
         generation_ms = (time.perf_counter() - generation_started) * 1000
 
         chat_cost = estimate_cost_usd(
@@ -323,6 +311,10 @@ class RAGPipeline:
                 "top_k": top_k,
                 "temperature": settings.temperature,
                 "max_output_tokens": settings.max_output_tokens,
+                # The fingerprint, not the text: this is what makes a prompt
+                # change visible when two runs are compared months apart.
+                "prompt_version": self._prompts.tracked_version,
+                "prompt_fingerprint": self._prompts.fingerprint,
                 "question": question,
             },
             metrics={

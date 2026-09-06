@@ -109,6 +109,20 @@ def _log_summary(pipeline, summary: EvalSummary, breaches: list[str]) -> None:
     if tracker is None:
         return
 
+    # The eval run is where the prompt text itself is worth storing. A query
+    # run records only the fingerprint, so this is the artifact you open when
+    # accuracy moved between two runs and you need to read what changed.
+    prompts = getattr(pipeline, "_prompts", None)
+    prompt_params = (
+        {
+            "prompt_version": prompts.tracked_version,
+            "prompt_fingerprint": prompts.fingerprint,
+        }
+        if prompts is not None
+        else {}
+    )
+    prompt_artifacts = prompts.as_artifacts() if prompts is not None else {}
+
     report_lines = [
         "case_id\tcorrect\treason",
         *(f"{s.case_id}\t{s.correct}\t{s.failure_reason}" for s in summary.scores),
@@ -117,7 +131,11 @@ def _log_summary(pipeline, summary: EvalSummary, breaches: list[str]) -> None:
     tracker.log_run(
         run_name="evaluation",
         payload=RunPayload(
-            params={"cases": summary.total, "gate": "pass" if not breaches else "fail"},
+            params={
+                "cases": summary.total,
+                "gate": "pass" if not breaches else "fail",
+                **prompt_params,
+            },
             metrics={
                 "accuracy": summary.accuracy,
                 "retrieval_hit_rate": summary.retrieval_hit_rate,
@@ -132,6 +150,7 @@ def _log_summary(pipeline, summary: EvalSummary, breaches: list[str]) -> None:
             artifacts={
                 "eval_report.tsv": "\n".join(report_lines),
                 "breaches.txt": "\n".join(breaches) or "(none)",
+                **prompt_artifacts,
             },
         ),
     )

@@ -371,6 +371,54 @@ retrieval discriminates between two documents that both discuss cost.
 `tests/test_evaluation.py` enforces this property directly: a test fails if
 the corpus ever shrinks back toward the retrieval depth.
 
+### Prompt versioning
+
+The prompts were string constants inside `pipeline.py`, which made them
+invisible to everything MLflow recorded. Two eval runs three weeks apart could
+differ by four points of accuracy with nothing in the tracking data to say the
+prompt had been rewritten in between. The prompt is a parameter of this system
+in exactly the way `chunk_size` is, and it was the only one not being logged.
+
+The text now lives in `src/app/rag/prompt_templates/*.txt`, and three things
+make a change impossible to miss:
+
+- **Content addressing.** Each template hashes to a fingerprint, and the set
+  hashes to one combined fingerprint. Unlike a version number a human
+  maintains, a hash cannot be forgotten.
+- **A lock file.** `prompts.lock.json` pins the declared version to those
+  hashes. Editing a template without re-pinning fails `make test`:
+
+  ```
+  AssertionError: prompt templates have drifted from the lock. If the
+  change is intended, run: make prompts-lock VERSION=<next version>
+  ```
+
+  That is the mechanism, not a side effect — it converts a silent prompt
+  change into a reviewable one.
+- **`-dirty`.** If the files and the lock disagree at runtime, the version
+  logged is `v1-dirty`, borrowing the `git describe` convention. A run is
+  never attributed to a clean version it did not use.
+
+Every `/query` run records `prompt_version` and `prompt_fingerprint` as
+params. Eval runs additionally store the full text under `prompts/*.txt` — the
+artifact you open when accuracy moved and you need to read what changed. Query
+runs deliberately do not: artifacts are the one thing that writes to GCS on the
+request path, and the text is already recoverable from git by its fingerprint.
+`/ready` reports the version too, so a deployed revision can be matched to the
+eval run that measured it.
+
+Substitution is `string.Template` (`$context`) rather than `str.format`,
+because prompts acquire JSON examples over time and a literal `{` in a
+`.format` template is a `KeyError` on the request path. Placeholders are
+declared in code and checked against the file at import, so renaming
+`$question` to `$query` fails in CI rather than on a user's request.
+
+Two honest limits. The lock proves the text changed, not that anyone
+re-measured it — only `make eval` can say whether new wording is better. And
+this versions the prompt, not the model: the same prompt against a new
+`gpt-4o-mini` snapshot is a different system, which is what the `chat_model`
+param is for.
+
 ### Parameter sweeps
 
 MLflow was recording every call but never comparing two configurations, which
@@ -544,6 +592,8 @@ your card. If you have not upgraded, the failure mode is downtime, not a bill.
 │   ├── rag/
 │   │   ├── chunking.py      # paragraph-aware splitter
 │   │   ├── vectorstore.py   # Chroma, cosine similarity
+│   │   ├── prompts.py       # content-addressed prompts + lock file
+│   │   ├── prompt_templates/# the prompt text itself, one file each
 │   │   └── pipeline.py      # ingest + query orchestration, instrumented
 │   ├── evaluation/
 │   │   ├── dataset.py       # golden-set JSONL loader
@@ -554,9 +604,9 @@ your card. If you have not upgraded, the failure mode is downtime, not a bill.
 │       ├── spend_guard.py   # daily OpenAI spend ceiling
 │       └── mlflow_tracker.py# fail-open MLflow logging
 ├── evals/                   # golden.jsonl + corpus/ for the quality gate
-├── tests/                   # 121 tests, OpenAI fully mocked
+├── tests/                   # 150 tests, OpenAI fully mocked
 ├── terraform/               # AR, GCS, Cloud Run, IAM, WIF, budget
-├── scripts/                 # bootstrap, wif, budget, cost_check, teardown, smoke
+├── scripts/                 # bootstrap, wif, budget, cost_check, teardown, smoke, lock_prompts
 ├── .github/workflows/       # ci.yml (all branches) + deploy.yml (main)
 └── Dockerfile               # multi-stage, non-root, amd64
 ```

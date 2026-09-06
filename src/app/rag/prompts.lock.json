@@ -1,0 +1,9 @@
+{
+  "version": "v1",
+  "fingerprint": "5353b4d8555c",
+  "templates": {
+    "answer_system": "77a7a8d5c06c",
+    "answer_user": "3e6bb74412bc",
+    "no_context_answer": "9747ea2883e4"
+  }
+}

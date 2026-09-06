@@ -101,6 +101,19 @@ def test_run_records_model_params_and_tags(tracked_pipeline, tracking_settings):
     assert run.data.tags["grounded"] == "true"
 
 
+def test_run_records_which_prompt_version_produced_it(tracked_pipeline, tracking_settings):
+    """Without this, a prompt rewrite is invisible when two runs are compared
+    months apart -- accuracy moves and nothing says why."""
+    from app.rag.prompts import PROMPTS
+
+    tracked_pipeline.ingest([(SAMPLE_DOCS[0]["text"], "cloudrun", {})])
+    result = tracked_pipeline.query("What is Cloud Run?")
+
+    params = _get_run(tracking_settings, result.mlflow_run_id).data.params
+    assert params["prompt_version"] == PROMPTS.tracked_version
+    assert params["prompt_fingerprint"] == PROMPTS.fingerprint
+
+
 def test_ungrounded_query_is_tagged_as_such(tracked_pipeline, tracking_settings):
     result = tracked_pipeline.query("Nothing has been ingested yet.")
 

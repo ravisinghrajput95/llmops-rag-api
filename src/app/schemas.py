@@ -91,3 +91,6 @@ class ReadyResponse(BaseModel):
     # into logs. Unauthenticated, so it deliberately exposes only aggregates.
     spend: dict = Field(default_factory=dict)
     persistence: dict = Field(default_factory=dict)
+    # Which prompt version this instance is serving, so a deployed revision can
+    # be matched to the eval run that measured it.
+    prompts: dict = Field(default_factory=dict)

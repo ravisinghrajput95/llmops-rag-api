@@ -19,6 +19,7 @@ make lint     # ruff check + format --check (line-length 95)
 make fmt      # auto-fix
 make run      # uvicorn on :8080
 make eval     # SPENDS ~$0.002 against real OpenAI -- never run unprompted
+make prompts-lock VERSION=v2   # re-pin the prompt lock after editing a prompt
 ```
 
 Tests need no API key and no GCP credentials. If a change makes them require
@@ -92,6 +93,17 @@ conversation.
   otherwise couple every test to how many ran before it. `tests/test_limits.py`
   re-enables them deliberately against purpose-built instances.
 - `/ingest` returns **201**, not 200.
+- **Editing a prompt fails the suite until you re-lock it.** Prompt text lives
+  in `src/app/rag/prompt_templates/*.txt`, hashed into
+  `src/app/rag/prompts.lock.json`. `tests/test_prompts.py` compares the two, so
+  any edit fails with a message pointing at `make prompts-lock VERSION=<next>`.
+  That is the feature: it forces a prompt change to be deliberate and land with
+  a new version, because that version string is how an MLflow run months later
+  says which words produced it. Bump the version rather than re-pinning the old
+  one — re-pinning without bumping makes two different prompts both claim v1.
+  Prompts substitute with `string.Template` (`$context`), not `str.format`, and
+  their placeholders are declared in `TEMPLATE_PLACEHOLDERS`; changing one
+  without the other fails at import, by design.
 
 ## Deploying
 
