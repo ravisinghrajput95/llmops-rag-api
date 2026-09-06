@@ -1,5 +1,5 @@
 {
-  "provenance": "Retrieval signals measured with text-embedding-3-small over the 22-doc corpus at min_similarity=0.28, min_similarity_ratio=0.6, top_k=4. Refusal outcomes are what gpt-4o-mini actually did in the 2026-09-06 make eval run (128 cases, $0.008951). Regenerate when the corpus, the retrieval config or the embedding model changes.",
+  "provenance": "Retrieval signals measured with text-embedding-3-small over the 22-doc corpus at min_similarity=0.28, min_similarity_ratio=0.6, top_k=4. Refusal outcomes are what gpt-4o-mini actually did in the 2026-09-06 make eval run under prompt v2 (128 cases, 98.4% accuracy, $0.009432). Regenerate when the corpus, the retrieval config or the embedding model changes.",
   "embedding_model": "text-embedding-3-small",
   "min_similarity": 0.28,
   "min_similarity_ratio": 0.6,
@@ -225,7 +225,7 @@
       "id": "artifacts-and-free-storage",
       "tier": "answerable",
       "grounded": true,
-      "refused": true,
+      "refused": false,
       "top_similarity": 0.5353,
       "retrieved_chunks": 4
     },
@@ -289,7 +289,7 @@
       "id": "archive-minimum-duration",
       "tier": "answerable",
       "grounded": true,
-      "refused": true,
+      "refused": false,
       "top_similarity": 0.5652,
       "retrieved_chunks": 3
     },

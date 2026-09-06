@@ -21,6 +21,7 @@ make run      # uvicorn on :8080
 make eval     # SPENDS ~$0.002 against real OpenAI -- never run unprompted
 make prompts-lock VERSION=v2   # re-pin the prompt lock after editing a prompt
 make drift    # compare recent traffic to the eval baseline (free, reads MLflow)
+make compare-prompts VARIANT=evals/prompt_variants/<name>   # SPENDS ~2x eval
 ```
 
 Tests need no API key and no GCP credentials. If a change makes them require
@@ -142,6 +143,24 @@ conversation.
 - Runs recorded before the `refused` metric existed are skipped, not defaulted.
   Defaulting them to "not refused" would read a window of old traffic as a
   perfect zero refusal rate.
+
+## Changing a prompt
+
+Write the candidate into `evals/prompt_variants/<name>/` and run
+`make compare-prompts VARIANT=...` rather than editing the shipped templates and
+running `make eval`. Both arms then share one store and one retrieval config, so
+the only variable is the wording.
+
+**Run-to-run variance on the golden set is about two cases** at
+`temperature=0.2`. A one-case difference decides nothing; read the per-case
+FIXED/BROKEN list, not the aggregate. Two of three candidates tried so far were
+rejected — one because telling the model to name the part it could not answer
+made it name that part *with the refusal sentence*, scoring a good answer as a
+refusal. `evals/prompt_variants/README.md` records what each one measured, so a
+rejected idea stays rejected instead of being re-paid for.
+
+Longer prompts cost real money on every query forever: the rejected v3 was
++30%, the shipped v2 is +5.7%. Weigh that against the measured gain.
 
 ## Deploying
 

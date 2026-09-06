@@ -1,8 +1,8 @@
 {
-  "version": "v1",
-  "fingerprint": "5353b4d8555c",
+  "version": "v2",
+  "fingerprint": "444e82ee90f6",
   "templates": {
-    "answer_system": "77a7a8d5c06c",
+    "answer_system": "e7d2d17d0260",
     "answer_user": "3e6bb74412bc",
     "no_context_answer": "9747ea2883e4"
   }

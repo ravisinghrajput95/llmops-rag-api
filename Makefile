@@ -8,7 +8,7 @@ IMAGE       ?= llmops-rag-api
 REGION      ?= us-central1
 SERVICE     ?= llmops-rag-api
 
-.PHONY: help venv install test lint fmt run docker-build docker-run clean deploy destroy cost-check eval sweep prompts-lock drift
+.PHONY: help venv install test lint fmt run docker-build docker-run clean deploy destroy cost-check eval sweep prompts-lock drift compare-prompts
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -41,6 +41,11 @@ drift: ## Compare recent production traffic against the eval baseline (free)
 	# Reads MLflow only -- no model calls, no spend. Needs a baseline from
 	# `make eval` and some recorded /query traffic to compare against.
 	$(PYTHON) scripts/check_drift.py
+
+compare-prompts: ## A/B two prompt versions over the golden set (SPENDS ~2x eval)
+	# Both arms share one store and one retrieval config, so the only variable
+	# is the wording. VARIANT=evals/prompt_variants/<name>
+	$(PYTHON) scripts/compare_prompts.py --variant $(VARIANT)
 
 lint: ## Lint and check formatting
 	.venv/bin/ruff check src tests

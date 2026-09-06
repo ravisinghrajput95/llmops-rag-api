@@ -168,9 +168,10 @@ class PromptSet:
         }
 
 
-def load_templates(template_dir: Path = TEMPLATE_DIR) -> dict[str, PromptTemplate]:
+def load_templates(template_dir: Path | str = TEMPLATE_DIR) -> dict[str, PromptTemplate]:
     """Read and validate the template files. Separate from the lock so that
     `scripts/lock_prompts.py` can write the very lock this module requires."""
+    template_dir = Path(template_dir)
     templates: dict[str, PromptTemplate] = {}
     for name, placeholders in TEMPLATE_PLACEHOLDERS.items():
         path = template_dir / f"{name}.txt"
@@ -187,10 +188,10 @@ def load_templates(template_dir: Path = TEMPLATE_DIR) -> dict[str, PromptTemplat
 
 
 def load_prompt_set(
-    template_dir: Path = TEMPLATE_DIR, lock_path: Path = LOCK_PATH
+    template_dir: Path | str = TEMPLATE_DIR, lock_path: Path | str = LOCK_PATH
 ) -> PromptSet:
     templates = load_templates(template_dir)
-    version, locked = _read_lock(lock_path, templates)
+    version, locked = _read_lock(Path(lock_path), templates)
     return PromptSet(version=version, templates=templates, locked=locked)
 
 

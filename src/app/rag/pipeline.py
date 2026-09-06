@@ -96,6 +96,26 @@ class RAGPipeline:
     def persistence_info(self) -> dict:
         return {"enabled": self._snapshots.enabled, "uri": self._snapshots.uri}
 
+    def with_prompts(self, prompts: PromptSet) -> RAGPipeline:
+        """A pipeline identical to this one but answering with other prompts.
+
+        Shares the vector store and the clients deliberately: comparing two
+        prompt versions is only meaningful if everything else -- the corpus,
+        the chunking, the retrieval config -- is held fixed. Re-ingesting for
+        the second arm would also pay the embedding cost twice for a variable
+        that does not affect retrieval at all.
+        """
+        return RAGPipeline(
+            settings=self._settings,
+            store=self._store,
+            embedding_client=self._embeddings,
+            chat_client=self._chat,
+            tracker=self._tracker,
+            spend_guard=self._spend,
+            snapshots=self._snapshots,
+            prompts=prompts,
+        )
+
     def flush_tracking(self) -> None:
         """Persist tracking state before the instance goes away."""
         self._tracker.flush()

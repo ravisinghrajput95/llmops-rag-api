@@ -344,28 +344,31 @@ attempt. The grounded cases deliberately include numeric precision (two
 adjacent figures that are easy to confuse), negation, conditional consequences
 and one cross-document question.
 
-**Latest run** (`make eval`, `gpt-4o-mini`, 2026-09-06 — 128 cases, 22 documents):
+**Latest run** (`make eval`, `gpt-4o-mini`, prompt v2, 2026-09-06 — 128 cases, 22 documents):
 
 | Metric | Result |
 |---|---|
-| accuracy | 96.1% (123/128) |
-| retrieval hit rate | **100%** (60 grounded cases) |
-| refusal accuracy | 97.1% (66/68) |
-| citation rate | 96.7% |
-| mean / p95 latency | 1,132 ms / 1,723 ms |
-| total cost | $0.008951 |
+| accuracy | **98.4%** (126/128) |
+| retrieval hit rate | **100%** (61 grounded cases) |
+| refusal accuracy | 98.5% (66/67) |
+| citation rate | **100%** |
+| mean / p95 latency | 1,098 ms / 1,505 ms |
+| total cost | $0.009432 |
 
-Accuracy fell from a previous 100% because the set it is measured over got
-much harder: 60 negatives were added, 35 of them near-misses. Cost per case
-fell 30% over the same change ($0.000100 → $0.000070), and no failure was a
-retrieval failure — the hit rate held at 100%.
+Gate **passed**. The two remaining failures are `gpt4o-vs-mini` (the model
+quoted both prices instead of the ratio the corpus states; intermittent) and
+`near-cr-maxconc`, described under "Prompt versions that were measured" below.
 
-One of the five failures was a bad case rather than a bad answer.
-`near-temp-value` ("what temperature value should be used for grounded
-answering?") was written as a near-miss, but the corpus does answer it at the
-level of "low values", which is what the model said. It has been relabelled as
-a grounded case, so the next run scores **124/128** with refusal accuracy
-**66/67** over 67 negatives. The numbers above are left as measured.
+This is not comparable to the previous 100%, because the set got much harder
+in between: 60 negatives were added, 34 of them near-misses on topics the
+corpus covers. Cost per case still fell 30% ($0.000100 → $0.000070), and no
+failure at any point was a retrieval failure — the hit rate has held at 100%
+throughout.
+
+**Run-to-run variance is about two cases** at `temperature=0.2`, which is worth
+knowing before reading anything into a one-case difference. `near-cr-maxconc`
+is the clearest example: the shipped prompt refuses it correctly in roughly one
+run out of five and answers it wrongly in the rest.
 
 **Why this 100% means something and the previous one did not.** The corpus was
 three documents — five chunks — against `top_k=4`. Every query retrieved ~80%
@@ -382,6 +385,31 @@ retrieval discriminates between two documents that both discuss cost.
 
 `tests/test_evaluation.py` enforces this property directly: a test fails if
 the corpus ever shrinks back toward the retrieval depth.
+
+### Prompt versions that were measured
+
+Versioning a prompt makes a change *visible* in eval history. `make compare-prompts`
+makes one *decidable*: both arms run against the same store, corpus and retrieval
+config, so the only variable is the wording. Every candidate below was scored
+over the full 128-case set.
+
+| variant | system prompt | outcome |
+|---|---|---|
+| `v2-precision` | 951 chars | **Rejected.** Told the model to answer the supported part and name the unsupported part. It named it *using the refusal sentence*, so a partially-correct answer scored as a refusal — the exact opposite of the intent. |
+| `v3-precision` | 1029 chars | **Rejected on cost.** Fixed that backfire and reached 98.4% accuracy, but **+30%** per query for an accuracy difference inside the noise band. Most of its length was the rules that did not work. |
+| `v4-minimal` → **v2** | 439 chars | **Shipped.** Keeps only the rule that repeatedly worked — do simple comparison or arithmetic rather than declining — for **+5.7%**. Fixed `archive-minimum-duration` in every run, and took citation rate to 100%. |
+
+The honest reading is that the aggregate accuracy gain is inside the noise. The
+justification for shipping v2 is the specific reproducible fix and the citation
+rate, not the headline number.
+
+**What no prompt fixed** is `near-cr-maxconc`. Asked for Cloud Run's maximum
+concurrency, the model reports the documented *default* of eighty as a maximum.
+An explicit "a default is not a limit" instruction did not help, and it fails
+intermittently rather than always. It is a reading error on the one passage that
+should have been retrieved — the same wall the similarity floor hits, one layer
+up. `Thresholds.refusal_accuracy` sits at 0.98 to admit exactly this and trip on
+a second.
 
 ### Production monitoring
 
@@ -431,11 +459,15 @@ refusal outcome for all 128 golden questions — and is free to re-run:
 
 | window of 100 | 5% contamination | 10% | 20% |
 |---|---|---|---|
-| near-miss detected | 1.8% | 53.6% | **100%** |
-| off-topic detected | 2.2% | 64.0% | **100%** |
+| near-miss detected | 0% | **100%** | **100%** |
+| off-topic detected | 0% | **100%** | **100%** |
 
-False positives on clean traffic are 0–1% at every window size, and the named
+False positives on clean traffic are 0–0.4% at every window size, and the named
 diagnosis is right 100% of the time for near-miss drift and 99% for off-topic.
+Detection sharpened when prompt v2 removed the two false refusals that had been
+in the baseline: a reference with less noise in it discriminates better, which
+is the argument for refreshing the baseline on every eval rather than pinning
+one.
 Windows under 30 queries are reported as insufficient rather than scored,
 because a rate difference over a handful of queries means nothing.
 
@@ -768,7 +800,7 @@ your card. If you have not upgraded, the failure mode is downtime, not a bill.
 │       ├── spend_guard.py   # daily OpenAI spend ceiling
 │       └── mlflow_tracker.py# fail-open MLflow logging
 ├── evals/                   # golden.jsonl + corpus/, baseline.json, signals.json
-├── tests/                   # 174 tests, OpenAI fully mocked
+├── tests/                   # 179 tests, OpenAI fully mocked
 ├── terraform/               # AR, GCS, Cloud Run, IAM, WIF, budget
 ├── scripts/                 # bootstrap, wif, budget, cost_check, teardown, smoke, lock_prompts
 ├── .github/workflows/       # ci.yml (all branches) + deploy.yml (main)

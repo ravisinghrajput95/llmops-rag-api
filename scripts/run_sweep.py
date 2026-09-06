@@ -59,7 +59,9 @@ def main() -> int:
     configure_logging(level="WARNING", service_name=base.service_name)
 
     if not args.offline and not base.openai_api_key:
-        print("OPENAI_API_KEY is not set; use --offline to see the mechanics.", file=sys.stderr)
+        print(
+            "OPENAI_API_KEY is not set; use --offline to see the mechanics.", file=sys.stderr
+        )
         return 2
 
     import tempfile
@@ -126,7 +128,9 @@ def _fakes():
 
     class C:
         def complete(self, system, user):
-            return ChatResult(text="offline", model="fake", prompt_tokens=0, completion_tokens=0)
+            return ChatResult(
+                text="offline", model="fake", prompt_tokens=0, completion_tokens=0
+            )
 
     return E(), C()
 
