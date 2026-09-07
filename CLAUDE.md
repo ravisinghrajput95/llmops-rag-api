@@ -45,8 +45,11 @@ workload identity pool, and the id cannot be reused until it expires. Reusing
 one makes `terraform apply` fail *partway through* — the pool, its provider and
 the impersonation binding fail while all ~24 other resources succeed. It
 presents as a mysterious partial deploy, not a name collision. Bump
-`wif_pool_id` in `terraform.tfvars` after any destroy. Check what is still
-burned with:
+`wif_pool_id` in `terraform.tfvars` after any destroy. `scripts/teardown.sh`
+reads that value, so bumping it keeps the script honest; `terraform destroy` is
+the more reliable path either way, since it deletes from state rather than from
+hardcoded names, and the script needs an interactive `delete` confirmation.
+Check what is still burned with:
 
 ```bash
 gcloud iam workload-identity-pools list --location=global --show-deleted

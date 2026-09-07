@@ -15,6 +15,16 @@ PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-us-central1}"
 SERVICE="${SERVICE:-llmops-rag-api}"
 BUCKET="${PROJECT_ID}-mlflow-artifacts"
+# Read the pool id from terraform.tfvars rather than defaulting to the first
+# one this project ever used. Pool ids get bumped after every destroy (they are
+# reserved for 30 days and cannot be reused), so a hardcoded default silently
+# leaves the live pool running while this script reports a clean teardown --
+# and the pool is the one resource whose name you must not lose track of.
+_TFVARS="$(dirname "$0")/../terraform/terraform.tfvars"
+if [ -z "${WIF_POOL:-}" ] && [ -f "$_TFVARS" ]; then
+  WIF_POOL="$(sed -n 's/^[[:space:]]*wif_pool_id[[:space:]]*=[[:space:]]*"\(.*\)".*/\1/p' "$_TFVARS" | tail -1)"
+fi
+WIF_POOL="${WIF_POOL:-llmops-github-pool}"
 : "${PROJECT_ID:?set PROJECT_ID or run: gcloud config set project <id>}"
 
 AUTO_APPROVE=false
@@ -33,7 +43,7 @@ cat <<PLAN
     - GCS bucket               gs://${BUCKET} and every object in it
     - Secrets                  ${SERVICE}-openai-api-key, ${SERVICE}-app-api-key
     - Service accounts         ${SERVICE}-run, ${SERVICE}-deployer
-    - Workload identity pool   ${WIF_POOL:-llmops-github-pool}
+    - Workload identity pool   ${WIF_POOL}
 
   Kept (free, and annoying to recreate):
     - Enabled APIs
@@ -87,12 +97,12 @@ for secret in "${SERVICE}-openai-api-key" "${SERVICE}-app-api-key"; do
 done
 
 say "Workload identity federation"
-if gcloud iam workload-identity-pools describe ${WIF_POOL:-llmops-github-pool} --location=global >/dev/null 2>&1; then
+if gcloud iam workload-identity-pools describe ${WIF_POOL} --location=global >/dev/null 2>&1; then
   # Pools are soft-deleted and the id stays reserved for 30 days.
-  gcloud iam workload-identity-pools delete ${WIF_POOL:-llmops-github-pool} --location=global --quiet
-  gone "workload identity pool ${WIF_POOL:-llmops-github-pool}"
+  gcloud iam workload-identity-pools delete ${WIF_POOL} --location=global --quiet
+  gone "workload identity pool ${WIF_POOL}"
 else
-  skip "workload identity pool ${WIF_POOL:-llmops-github-pool}"
+  skip "workload identity pool ${WIF_POOL}"
 fi
 
 say "Service accounts"
