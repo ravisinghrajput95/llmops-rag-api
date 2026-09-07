@@ -1,7 +1,6 @@
 # LLMOps RAG API — Cloud Run, MLflow, and a hard budget ceiling
 
 [![CI](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/ci.yml/badge.svg)](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/ci.yml)
-[![Deploy](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/deploy.yml/badge.svg)](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/deploy.yml)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Tests](https://img.shields.io/badge/tests-185%20passing-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -22,6 +21,19 @@ guess, and drift detection that watches live traffic which has no labels at all.
 | Cost per query | ~₹0.03, measured not modelled |
 | Cost per full eval run | $0.0094 |
 | GCP spend at demo scale | ₹0 — every resource inside Always Free |
+
+![MLflow run table showing estimated cost, latency, token count and prompt version for individual queries](docs/images/mlflow-per-call-tracking.jpg)
+
+*Screenshots are from a real run of this service. Every request is a tracked run: estimated cost, latency, tokens and the prompt
+version that produced it. The sub-microcent rows are queries the similarity
+floor rejected before any model call — retrieval only, no generation to pay for.*
+
+> **Deployment state:** the GCP infrastructure is torn down between demos, by
+> design — `terraform destroy` removes every billable resource and
+> `terraform apply` brings it back in about three minutes. CI runs on every
+> push regardless; the deploy job only succeeds while the infrastructure
+> exists. Screenshots and measured numbers below come from real runs against
+> the deployed service.
 
 Built under a specific constraint — **₹266 of GCP trial credit expiring
 15 Sep 2026** — so cost is treated as a first-class design input, not a
@@ -291,6 +303,11 @@ Authentication is keyless via Workload Identity Federation, scoped by an
 ---
 
 ## API
+
+![Swagger UI listing the ops and rag endpoint groups](docs/images/api-docs.jpg)
+
+OpenAPI docs are served at `/docs`. Response models are declared, so the schema
+is generated rather than described.
 
 | Method | Path | Auth | Cost |
 |---|---|---|---|
@@ -567,6 +584,11 @@ make a change impossible to miss:
 - **`-dirty`.** If the files and the lock disagree at runtime, the version
   logged is `v1-dirty`, borrowing the `git describe` convention. A run is
   never attributed to a clean version it did not use.
+
+![MLflow artifact browser showing prompts/answer_system.txt stored with an evaluation run](docs/images/mlflow-prompt-artifact.jpg)
+
+*The exact prompt text, stored beside the eval run that measured it. When
+accuracy moves between two runs, this is the artifact you open.*
 
 Every `/query` run records `prompt_version` and `prompt_fingerprint` as
 params. Eval runs additionally store the full text under `prompts/*.txt` — the

@@ -3,3 +3,9 @@ pytest==8.3.4
 pytest-asyncio==0.25.2
 httpx==0.28.1
 ruff==0.8.6
+# The full mlflow distribution, for `mlflow ui` only. The runtime deliberately
+# installs mlflow-skinny (client-only, smaller image), which cannot serve the
+# UI -- so the workflow the README documents did not work on a clean checkout.
+# Dev-only: the container builds from requirements.txt, so image size is
+# unaffected.
+mlflow==2.19.0
