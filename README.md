@@ -1,6 +1,7 @@
 # LLMOps RAG API — Cloud Run, MLflow, and a hard budget ceiling
 
 [![CI](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/ci.yml/badge.svg)](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/ci.yml)
+[![Deploy](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/deploy.yml/badge.svg)](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/deploy.yml)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Tests](https://img.shields.io/badge/tests-190%20passing-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
