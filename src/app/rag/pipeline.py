@@ -7,6 +7,7 @@ by stage, tokens, estimated cost) and handed to the tracker.
 from __future__ import annotations
 
 import logging
+import tempfile
 import time
 from dataclasses import dataclass, field
 
@@ -21,6 +22,12 @@ from app.tracking.mlflow_tracker import MLflowTracker, RunPayload
 from app.tracking.spend_guard import SpendGuard
 
 logger = logging.getLogger(__name__)
+
+# How many times an ingest will rebase its chunks onto a newer snapshot before
+# giving up. Contention needs two instances ingesting in the same few seconds,
+# which at max-instances=2 and a demo's ingest rate is already unlikely; a
+# third round is deep in the tail.
+SNAPSHOT_MERGE_ATTEMPTS = 3
 
 
 @dataclass
@@ -86,6 +93,11 @@ class RAGPipeline:
         self._spend = spend_guard or SpendGuard(budget_usd=0.0)
         # A disabled store by default, so nothing touches GCS unless asked.
         self._snapshots = snapshots or SnapshotStore(bucket="", object_name="", enabled=False)
+        # The generation this instance last read or wrote. 0 means "we have
+        # seen no snapshot", which as a precondition asks GCS to create the
+        # object only if it does not exist -- so the very first two instances
+        # to ingest race safely too.
+        self._snapshot_generation = 0
 
     def collection_size(self) -> int:
         return self._store.count()
@@ -198,7 +210,7 @@ class RAGPipeline:
         # Persist only when something changed. Snapshotting an unchanged
         # store would burn a GCS write per no-op request.
         if all_chunks and self._settings.snapshot_on_ingest and self._snapshots.enabled:
-            self._snapshots.save(self._settings.chroma_dir)
+            self._save_snapshot(all_chunks, result.vectors)
 
         self._tracker.log_run(
             run_name="ingest",
@@ -220,6 +232,63 @@ class RAGPipeline:
             ),
         )
         return outcome
+
+    def adopt_snapshot_generation(self, generation: int) -> None:
+        """Record the generation restored at startup, so the first ingest from
+        this instance writes against what it actually read."""
+        self._snapshot_generation = generation
+
+    def _save_snapshot(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
+        """Upload the store, rebasing onto a concurrent writer if there is one.
+
+        A single shared object with last-write-wins silently discarded the
+        other instance's documents, and documents are the one thing in that
+        bucket nobody can regenerate. This uploads conditionally instead: if
+        another instance wrote since we last synced, GCS refuses, and we replay
+        *our* chunks on top of *their* snapshot rather than over it.
+
+        Replay is safe because the store upserts on stable chunk ids, so a
+        document ingested by both instances converges instead of duplicating.
+
+        The honest limit: this makes the *snapshot* complete, not this
+        instance's memory. Our local store still lacks the other instance's
+        documents until a cold start restores the merged file. Fixing that
+        would mean rebuilding the live Chroma client mid-request, which is a
+        much larger risk than the staleness it removes.
+        """
+        settings = self._settings
+        outcome = self._snapshots.save(
+            settings.chroma_dir, expected_generation=self._snapshot_generation
+        )
+
+        attempts = 0
+        while outcome.conflict and attempts < SNAPSHOT_MERGE_ATTEMPTS:
+            attempts += 1
+            with tempfile.TemporaryDirectory() as workspace:
+                theirs = self._snapshots.restore(workspace)
+                if not theirs.ok:
+                    break
+                merged = ChromaVectorStore(workspace, settings.chroma_collection)
+                merged.add(chunks, vectors)
+                outcome = self._snapshots.save(
+                    workspace, expected_generation=theirs.generation
+                )
+
+        if outcome.ok:
+            self._snapshot_generation = outcome.generation
+            if attempts:
+                logger.info(
+                    "snapshot merged with a concurrent ingest",
+                    extra={"attempts": attempts, "chunks_replayed": len(chunks)},
+                )
+        elif outcome.conflict:
+            # Never silently: losing an ingest is the failure this exists to
+            # prevent, so a give-up is loud even though it does not fail the
+            # request.
+            logger.warning(
+                "snapshot still contended after retries; this ingest is not durable",
+                extra={"attempts": attempts, "chunks": len(chunks)},
+            )
 
     # -- retrieval ---------------------------------------------------------
     def retrieve(

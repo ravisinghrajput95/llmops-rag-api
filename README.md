@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/ci.yml/badge.svg)](https://github.com/ravisinghrajput95/llmops-rag-api/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
-![Tests](https://img.shields.io/badge/tests-185%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-190%20passing-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A production-shaped RAG service built to run on **₹0 of GCP spend**: FastAPI +
@@ -349,7 +349,7 @@ What this deliberately does not solve:
 
 | Limitation | Why it is acceptable here |
 |---|---|
-| Last write wins under concurrent ingest | Needs GCS generation preconditions and a retry loop. Ingest is rare and `max-instances` is 2. The restored generation is logged, so a lost write is diagnosable. |
+| A losing writer's local store is stale until its next cold start | Concurrent ingests no longer lose documents — the snapshot is written with a generation precondition and the loser replays its chunks onto the winner's copy — but only the *snapshot* is merged. Refreshing the live Chroma client mid-request is a bigger risk than the staleness. |
 | Whole-directory snapshots | Chroma's SQLite file and HNSW index must move together or the collection is corrupt. |
 | MLflow's SQLite run history is still ephemeral | Artifacts persist (they go to GCS). For durable run history, point `MLFLOW_TRACKING_URI` at a real backend. |
 
@@ -475,8 +475,10 @@ Always-Free bucket as the Chroma store, every `MLFLOW_SNAPSHOT_EVERY` runs (25)
 plus once on shutdown. Batching is deliberate: Cloud Storage's free tier allows
 5,000 class A operations a month and a write per query would spend them.
 
-**One object per instance, not one shared object.** The Chroma snapshot can use
-last-write-wins because ingest is rare. This is written every few dozen queries
+**One object per instance, not one shared object.** The Chroma snapshot solves
+contention a different way, because its writers hold divergent copies of one
+store that must be reconciled; MLflow runs are disjoint, so sharding removes the
+conflict outright. This is written every few dozen queries
 by every instance, so at `max-instances=2` a shared object would have instances
 replacing each other's runs wholesale — losing roughly half of them and keeping
 whichever wrote last. Each process instead writes `snapshots/mlflow/<revision>-<id>.tar.gz`
@@ -882,7 +884,7 @@ your card. If you have not upgraded, the failure mode is downtime, not a bill.
 │       ├── spend_guard.py   # daily OpenAI spend ceiling
 │       └── mlflow_tracker.py# fail-open MLflow logging
 ├── evals/                   # golden.jsonl + corpus/, baseline.json, signals.json
-├── tests/                   # 185 tests, OpenAI fully mocked
+├── tests/                   # 190 tests, OpenAI fully mocked
 ├── terraform/               # AR, GCS, Cloud Run, IAM, WIF, budget
 ├── scripts/                 # bootstrap, wif, budget, cost_check, teardown, smoke, lock_prompts
 ├── .github/workflows/       # ci.yml (all branches) + deploy.yml (main)

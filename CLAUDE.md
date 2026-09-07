@@ -137,12 +137,21 @@ conversation.
   scale-to-zero and the monitor is blind to production while looking healthy.
 - **It is sharded per process, and must stay that way.** Each instance writes
   `snapshots/mlflow/<revision>-<id>.tar.gz` and never restores anyone else's;
-  the reader merges. Do not "simplify" this back to one shared object like the
-  Chroma snapshot — that pattern is safe there only because ingest is rare. This
-  is written every `MLFLOW_SNAPSHOT_EVERY` runs by every instance, so a shared
+  the reader merges. Do not "simplify" this into one shared object: it is
+  written every `MLFLOW_SNAPSHOT_EVERY` runs by every instance, so a shared
   object means instances overwriting each other's runs wholesale at
-  `max-instances=2`. Uploads are batched because GCS allows 5,000 free class A
+  `max-instances=2`. The two stores resolve contention differently on purpose —
+  runs are disjoint so sharding removes the conflict, while Chroma writers hold
+  divergent copies of one store and need the compare-and-swap below. Uploads are batched because GCS allows 5,000 free class A
   operations a month and a write per query would spend them.
+- **Ingest snapshots use compare-and-swap, not last-write-wins.**
+  `SnapshotStore.save` takes `expected_generation`; on a conflict
+  `RAGPipeline._save_snapshot` restores the newer snapshot, replays its own
+  chunks onto it and retries. That replay is only safe because
+  `ChromaVectorStore.add` upserts on stable chunk ids — switch it to `add` and
+  concurrent ingest of the same document starts duplicating. The losing
+  instance's *local* store stays stale until its next cold start; only the
+  snapshot is merged.
 - **Bucket lifecycle rules are prefix-scoped, and must stay that way.** An
   unscoped age rule covers `snapshots/chroma.tar.gz` too, so a service left idle
   longer than the retention window silently loses every ingested document — the

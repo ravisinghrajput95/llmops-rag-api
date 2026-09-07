@@ -52,14 +52,13 @@ def build_pipeline(settings: Settings) -> RAGPipeline:
     # Restore BEFORE Chroma opens the directory: PersistentClient reads its
     # SQLite file and HNSW index at construction, so a restore afterwards
     # would be invisible until the next cold start.
-    if snapshots.enabled:
-        snapshots.restore(settings.chroma_dir)
+    restored = snapshots.restore(settings.chroma_dir) if snapshots.enabled else None
 
     store = ChromaVectorStore(
         persist_dir=settings.chroma_dir, collection_name=settings.chroma_collection
     )
     openai_client = build_openai_client(settings)
-    return RAGPipeline(
+    pipeline = RAGPipeline(
         settings=settings,
         store=store,
         embedding_client=OpenAIEmbeddingClient(openai_client, settings),
@@ -79,6 +78,11 @@ def build_pipeline(settings: Settings) -> RAGPipeline:
         spend_guard=SpendGuard(budget_usd=settings.daily_budget_usd),
         snapshots=snapshots,
     )
+    # Write conditionally against what we actually read, so a concurrent ingest
+    # is detected rather than overwritten.
+    if restored is not None and restored.ok:
+        pipeline.adopt_snapshot_generation(restored.generation)
+    return pipeline
 
 
 def get_pipeline(request: Request) -> RAGPipeline:

@@ -15,18 +15,42 @@ import pytest
 from app.persistence import SnapshotStore, _safe_extract
 
 
+class FakePreconditionFailed(Exception):
+    """Stands in for google.api_core.exceptions.PreconditionFailed (HTTP 412)."""
+
+    code = 412
+
+
 class FakeBlob:
-    """Minimal stand-in for a google.cloud.storage Blob."""
+    """Minimal stand-in for a google.cloud.storage Blob.
+
+    Enforces `if_generation_match`, because that precondition is the whole
+    mechanism stopping two instances from overwriting each other -- a double
+    that accepted the argument and ignored it would make the tests pass
+    whether or not the feature worked.
+    """
 
     def __init__(self) -> None:
         self.data: bytes | None = None
-        self.generation = 1
+        self.generation = 0
         self.upload_calls = 0
 
     def exists(self) -> bool:
         return self.data is not None
 
-    def upload_from_string(self, payload: bytes, content_type: str = "") -> None:
+    @property
+    def _live_generation(self) -> int:
+        # GCS treats "does not exist" as generation 0 for preconditions.
+        return self.generation if self.data is not None else 0
+
+    def upload_from_string(
+        self,
+        payload: bytes,
+        content_type: str = "",
+        if_generation_match: int | None = None,
+    ) -> None:
+        if if_generation_match is not None and if_generation_match != self._live_generation:
+            raise FakePreconditionFailed("generation mismatch")
         self.data = payload
         self.upload_calls += 1
         self.generation += 1
@@ -225,3 +249,115 @@ class TestIngestIntegration:
 
         assert persistence["enabled"] is True
         assert persistence["uri"] == "gs://test-bucket/chroma.tar.gz"
+
+
+class TestConcurrentIngest:
+    """Two instances ingesting at once must not discard each other's documents.
+
+    The store is a single shared object, and it used to be written
+    unconditionally: whoever uploaded last won, and the other instance's
+    documents were gone with no error anywhere. Documents are the one thing in
+    that bucket that cannot be regenerated.
+    """
+
+    def _pipeline(self, tmp_path, name, blob, monkeypatch):
+        from app.config import Settings
+        from app.rag.pipeline import RAGPipeline
+        from app.rag.vectorstore import ChromaVectorStore
+        from app.tracking.mlflow_tracker import MLflowTracker
+        from tests.conftest import FakeChatClient, FakeEmbeddingClient
+
+        settings = Settings(
+            openai_api_key="x",
+            chroma_dir=str(tmp_path / name / "chroma"),
+            chroma_collection="shared",
+            mlflow_enabled=False,
+            min_similarity=0.0,
+        )
+        store = SnapshotStore(bucket="b", object_name="snapshots/chroma.tar.gz")
+        monkeypatch.setattr(store, "_blob", lambda: blob)
+        return RAGPipeline(
+            settings=settings,
+            store=ChromaVectorStore(settings.chroma_dir, settings.chroma_collection),
+            embedding_client=FakeEmbeddingClient(),
+            chat_client=FakeChatClient(),
+            tracker=MLflowTracker(settings),
+            snapshots=store,
+        )
+
+    def _docs_in_snapshot(self, blob, tmp_path, monkeypatch):
+        """Restore the shared object and list the doc ids actually in it."""
+        from app.rag.vectorstore import ChromaVectorStore
+
+        reader = SnapshotStore(bucket="b", object_name="snapshots/chroma.tar.gz")
+        monkeypatch.setattr(reader, "_blob", lambda: blob)
+        target = tmp_path / "verify"
+        assert reader.restore(str(target)).ok
+        store = ChromaVectorStore(str(target), "shared")
+        hits = store.search([1.0] + [0.0] * 63, top_k=50, min_similarity=-1.0)
+        return {h.doc_id for h in hits}, store.count()
+
+    def test_a_second_instance_does_not_erase_the_first(self, tmp_path, monkeypatch) -> None:
+        blob = FakeBlob()
+        a = self._pipeline(tmp_path, "a", blob, monkeypatch)
+        b = self._pipeline(tmp_path, "b", blob, monkeypatch)
+
+        # Both started before either wrote, so both believe generation 0.
+        a.ingest([("Cloud Run scales to zero when idle.", "from-a", {})])
+        b.ingest([("Chroma is an embedded vector database.", "from-b", {})])
+
+        docs, count = self._docs_in_snapshot(blob, tmp_path, monkeypatch)
+        assert docs == {"from-a", "from-b"}, f"a document was discarded: {docs}"
+        assert count == 2
+
+    def test_the_loser_of_the_race_retries_rather_than_failing(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """The second writer should upload twice: once refused, once merged."""
+        blob = FakeBlob()
+        a = self._pipeline(tmp_path, "a", blob, monkeypatch)
+        b = self._pipeline(tmp_path, "b", blob, monkeypatch)
+
+        a.ingest([("Cloud Run scales to zero.", "from-a", {})])
+        uploads_after_a = blob.upload_calls
+        b.ingest([("Chroma is embedded.", "from-b", {})])
+
+        assert blob.upload_calls == uploads_after_a + 1, "the merged write landed"
+
+    def test_three_way_contention_still_keeps_every_document(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        blob = FakeBlob()
+        pipelines = [
+            self._pipeline(tmp_path, name, blob, monkeypatch) for name in ("a", "b", "c")
+        ]
+        for index, pipeline in enumerate(pipelines):
+            pipeline.ingest([(f"Document number {index}.", f"doc-{index}", {})])
+
+        docs, _ = self._docs_in_snapshot(blob, tmp_path, monkeypatch)
+        assert docs == {"doc-0", "doc-1", "doc-2"}
+
+    def test_re_ingesting_the_same_document_does_not_duplicate_it(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Merging replays chunks by id, so convergence depends on the upsert."""
+        blob = FakeBlob()
+        a = self._pipeline(tmp_path, "a", blob, monkeypatch)
+        b = self._pipeline(tmp_path, "b", blob, monkeypatch)
+
+        a.ingest([("The same text entirely.", "shared-doc", {})])
+        b.ingest([("The same text entirely.", "shared-doc", {})])
+
+        docs, count = self._docs_in_snapshot(blob, tmp_path, monkeypatch)
+        assert docs == {"shared-doc"}
+        assert count == 1, "the replay must upsert, not append"
+
+    def test_a_single_instance_still_writes_once(self, tmp_path, monkeypatch) -> None:
+        """No merge round-trip in the common uncontended case."""
+        blob = FakeBlob()
+        a = self._pipeline(tmp_path, "a", blob, monkeypatch)
+
+        a.ingest([("One document.", "only", {})])
+        a.ingest([("Another document.", "second", {})])
+
+        assert blob.upload_calls == 2, "one upload per ingest when uncontended"

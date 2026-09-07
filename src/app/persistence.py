@@ -15,11 +15,15 @@ budget this project was built against.
 
 What this is honest about:
 
-  * **Last write wins.** Two instances ingesting at once will clobber each
-    other's snapshot. Bounding that properly needs GCS generation preconditions
-    and a retry loop, which is real complexity for a demo that ingests rarely
-    and runs at max_instances=2. The generation of the restored snapshot is
-    logged, so a lost write is at least diagnosable.
+  * **Concurrent writes are detected, not silently lost.** `save` takes an
+    `expected_generation` and GCS refuses the upload if the object moved since
+    the caller last read it. `RAGPipeline._save_snapshot` then replays its own
+    chunks onto the newer snapshot and retries, so two instances ingesting at
+    once end up with both sets of documents rather than whichever landed last.
+    What this does *not* fix is the losing instance's own memory: its local
+    store still lacks the other's documents until a cold start restores the
+    merged file. Rebuilding a live Chroma client mid-request is a bigger risk
+    than that staleness.
   * **Snapshots are whole-directory.** Chroma's SQLite file plus its HNSW index
     must move together or the collection is corrupt, so there is no useful
     incremental version.
@@ -50,6 +54,12 @@ class SnapshotResult:
     detail: str
     bytes_transferred: int = 0
     duration_ms: float = 0.0
+    # The GCS object generation this call read or wrote. Pass it back to the
+    # next `save` to say "only write if nobody else has since".
+    generation: int = 0
+    # Someone else wrote between our read and our write. Not a failure: the
+    # caller is expected to merge onto their version and try again.
+    conflict: bool = False
 
 
 class SnapshotStore:
@@ -84,8 +94,15 @@ class SnapshotStore:
         return self._client.bucket(self._bucket_name).blob(self._object_name)
 
     # -- save --------------------------------------------------------------
-    def save(self, source_dir: str) -> SnapshotResult:
-        """Upload `source_dir` as a gzipped tar. Never raises."""
+    def save(self, source_dir: str, expected_generation: int | None = None) -> SnapshotResult:
+        """Upload `source_dir` as a gzipped tar. Never raises.
+
+        With `expected_generation`, the upload is conditional: it succeeds only
+        if the object still has that generation, and otherwise reports
+        `conflict` instead of overwriting. 0 means "only if it does not exist
+        yet". Without it the write is unconditional, which is correct only when
+        one process owns the object -- the MLflow shards, not this one.
+        """
         if not self._enabled:
             return SnapshotResult(ok=False, detail="disabled")
 
@@ -104,7 +121,16 @@ class SnapshotStore:
             payload = buffer.getvalue()
 
             with self._lock:
-                self._blob().upload_from_string(payload, content_type="application/gzip")
+                blob = self._blob()
+                if expected_generation is None:
+                    blob.upload_from_string(payload, content_type="application/gzip")
+                else:
+                    blob.upload_from_string(
+                        payload,
+                        content_type="application/gzip",
+                        if_generation_match=expected_generation,
+                    )
+                written = int(getattr(blob, "generation", 0) or 0)
 
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
             logger.info(
@@ -120,8 +146,18 @@ class SnapshotStore:
                 detail="uploaded",
                 bytes_transferred=len(payload),
                 duration_ms=duration_ms,
+                generation=written,
             )
         except Exception as exc:
+            if _is_precondition_failure(exc):
+                # Expected under concurrency, not an error. Reported so the
+                # caller can rebase its own writes onto the newer snapshot;
+                # silently overwriting is what used to lose them.
+                logger.info(
+                    "snapshot changed underneath us; caller should merge and retry",
+                    extra={"uri": self.uri, "expected_generation": expected_generation},
+                )
+                return SnapshotResult(ok=False, conflict=True, detail="generation conflict")
             # Losing a snapshot degrades durability; it must never fail the
             # ingest request that triggered it.
             logger.warning(
@@ -172,6 +208,7 @@ class SnapshotStore:
                 detail="restored",
                 bytes_transferred=len(payload),
                 duration_ms=duration_ms,
+                generation=int(getattr(blob, "generation", 0) or 0),
             )
         except Exception as exc:
             logger.warning(
@@ -179,6 +216,15 @@ class SnapshotStore:
                 extra={"uri": self.uri, "error": str(exc)},
             )
             return SnapshotResult(ok=False, detail=f"restore failed: {exc}")
+
+
+def _is_precondition_failure(exc: Exception) -> bool:
+    """Did GCS reject the write because the object moved under us?
+
+    Matched structurally rather than by importing google.api_core, which the
+    lazy-client design keeps out of import time.
+    """
+    return getattr(exc, "code", None) == 412 or type(exc).__name__ == "PreconditionFailed"
 
 
 def list_snapshot_objects(bucket: str, prefix: str, limit: int = 50) -> list[str]:
